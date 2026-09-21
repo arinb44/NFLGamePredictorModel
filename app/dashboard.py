@@ -281,8 +281,16 @@ if page == "This Week":
                 f'{img(a)}<span>{a.get("nick", r.away_team)}</span><span style="color:{GRAY};font-weight:400">at</span>'
                 f'{img(h)}<span>{h.get("nick", r.home_team)}</span></div>')
 
+    qb_path = PROCESSED_DIR / "qb_status.parquet"
+    qb_status = pd.read_parquet(qb_path) if qb_path.exists() else pd.DataFrame(columns=["game_id", "status"])
+
     def badges(r):
         out = []
+        for q in qb_status[(qb_status.game_id == r.game_id) & (qb_status.status != "ok")].itertuples():
+            if q.applied:
+                out.append((f"{q.team} QB: {q.backup_name} starts ({q.qb_name} out)", ":material/sports_football:", "violet"))
+            else:
+                out.append((f"{q.team} QB: {q.qb_name} left last game early", ":material/warning:", "orange"))
         if r.p_vegas == r.p_vegas and abs(r.p_show - r.p_vegas) >= 0.10:
             out.append(("Model vs Vegas: {:.0f} pts".format(abs(r.p_show - r.p_vegas) * 100), ":material/compare_arrows:", "orange"))
         wx = pd.DataFrame([{"wind_mph": r.wind_mph, "precip_mm": r.precip_mm, "temp_f": r.temp_f}])

@@ -62,6 +62,8 @@ def main():
     ap.add_argument("--qb", action="append", default=[], metavar='TEAM="QB Name"',
                     help="override a team's starting QB (repeatable)")
     ap.add_argument("--top", type=int, default=5, help="factors to show per game")
+    ap.add_argument("--assume-backups", action="store_true",
+                    help="also start the backup when the listed QB left his last game early")
     args = ap.parse_args()
 
     from src.explain import explain, format_explanation
@@ -77,7 +79,17 @@ def main():
         overrides[team.upper()] = resolve_qb(team.upper(), name.strip().strip('"'))
         print(f"QB override: {team.upper()} -> {overrides[team.upper()][1]}")
 
-    games, missing = rebuild(qb_overrides=overrides or None, save=not overrides)
+    games, missing = rebuild(qb_overrides=overrides or None, save=not (overrides or args.assume_backups),
+                             assume_backups=args.assume_backups)
+    qs = games.attrs.get("qb_status")
+    if qs is not None and len(qs) and (qs.status != "ok").any():
+        print("\nQB status for each team's next game:")
+        for r in qs[qs.status != "ok"].itertuples():
+            if r.applied:
+                print(f"  {r.team}: {r.qb_name} -> {r.backup_name} starting ({r.reason})")
+            else:
+                print(f"  {r.team}: WARNING {r.qb_name} {r.reason}. Model still uses {r.qb_name}; "
+                      f'to start the backup: --qb {r.team}="{r.backup_name}"  (or --assume-backups)')
     season = games[games.season == args.season]
     week = args.week
     if week is None:
@@ -93,7 +105,7 @@ def main():
             raise SystemExit(f"{args.game} is not in {args.season} week {week}.")
 
     bundle = joblib.load(MODELS_DIR / "logistic.joblib")
-    if not overrides:  # record both models for the live blitz test (src/track.py)
+    if not overrides and not args.assume_backups:  # record both models for the live blitz test (src/track.py)
         from src.track import record
         test_path = MODELS_DIR / "logistic_blitz.joblib"
         if test_path.exists():
@@ -113,7 +125,7 @@ def main():
                      "p_home": round(e["p_home"], 4), "p_vegas": None if np.isnan(v) else round(float(v), 4),
                      **{f"factor_{i + 1}": f"{f['favors']} +{abs(f['pct_points']) * 100:.1f}% {f['factor']}"
                         for i, f in enumerate(e["factors"])}})
-    if not overrides:
+    if not overrides and not args.assume_backups:
         PRED_DIR.mkdir(parents=True, exist_ok=True)
         out = PRED_DIR / f"{args.season}_week{week:02d}.csv"
         pd.DataFrame(rows).to_csv(out, index=False)

@@ -35,6 +35,8 @@ class FeatureParams:
     decay: float = 0.90           # weight multiplier per game back (0.9 = half-life ~6.6 games)
     prior_games: float = 3.0      # how many games' worth of weight last season's value gets
     carryover: float = 0.6        # share of last season's deviation from average that carries over
+    prior_fade: float = 1.0       # last season's weight is multiplied by this after each game played
+                                  # this season (1.0 = fixed weight; lower = current season takes over faster)
     form_decay: float = 0.5       # short-memory "recent form" features
     form_prior_games: float = 1.0
     qb_decay: float = 0.97        # per QB game
@@ -63,7 +65,7 @@ TEAM_STATS = [
 FORM_STATS = ["point_diff", "off_epa_per_play", "def_epa_per_play"]
 
 
-def _rolling_pregame(tg: pd.DataFrame, stats, decay, prior_games, carryover) -> pd.DataFrame:
+def _rolling_pregame(tg: pd.DataFrame, stats, decay, prior_games, carryover, prior_fade=1.0) -> pd.DataFrame:
     """Pregame weighted averages of `stats` for each team-game row in tg.
     tg must be sorted by gameday. Returns a frame aligned with tg.index."""
     league_mean = tg.groupby("season")[stats].mean()
@@ -79,6 +81,7 @@ def _rolling_pregame(tg: pd.DataFrame, stats, decay, prior_games, carryover) -> 
         W = np.zeros(len(stats))
         prior = None
         cur_season = None
+        n_played = 0
         for i in range(len(rows)):
             s = seasons[i]
             if s != cur_season:
@@ -86,19 +89,24 @@ def _rolling_pregame(tg: pd.DataFrame, stats, decay, prior_games, carryover) -> 
                 if prior is None or prev not in league_mean.index:
                     prior = league_mean.loc[s].to_numpy()   # first season: burn-in only
                 else:
-                    final = (prior_games * prior + S) / (prior_games + W)
+                    pw_end = prior_games * prior_fade ** n_played
+                    final = (pw_end * prior + S) / (pw_end + W)
                     lm = league_mean.loc[prev].to_numpy()
                     prior = lm + carryover * (final - lm)
                 S[:] = 0.0
                 W[:] = 0.0
+                n_played = 0
                 cur_season = s
-            out[pos[i]] = (prior_games * prior + S) / (prior_games + W)
+            pw = prior_games * prior_fade ** n_played
+            out[pos[i]] = (pw * prior + S) / (pw + W)
             x = vals[i]
             ok = ~np.isnan(x)
             S *= decay
             W *= decay
             S[ok] += x[ok]
             W[ok] += 1.0
+            if ok.any():
+                n_played += 1
     return pd.DataFrame(out, index=tg.index, columns=stats)
 
 
@@ -177,11 +185,11 @@ def load_matchup_inputs():
 
 def build_team_features(tg: pd.DataFrame, p: FeatureParams = FeatureParams()) -> pd.DataFrame:
     tg = tg.sort_values(["gameday", "game_id"]).reset_index(drop=True)
-    roll = _rolling_pregame(tg, TEAM_STATS, p.decay, p.prior_games, p.carryover)
+    roll = _rolling_pregame(tg, TEAM_STATS, p.decay, p.prior_games, p.carryover, p.prior_fade)
     form = _rolling_pregame(tg, FORM_STATS, p.form_decay, p.form_prior_games, 0.0)
     form.columns = [f"form_{c}" for c in FORM_STATS]
     pressure = _rolling_pregame(tg, ["off_pressure_rate", "def_pressure_rate"], p.decay, p.prior_games,
-                                p.carryover)
+                                p.carryover, p.prior_fade)
     pressure.columns = ["pr_allowed", "pr_generated"]
     qb = _qb_pregame(tg, p)
     log, rosters, outs = load_player_inputs()
@@ -220,6 +228,32 @@ def _fill_future_qbs(sched: pd.DataFrame, team_games: pd.DataFrame, qb_overrides
     return sched
 
 
+def apply_qb_status(sched: pd.DataFrame, team_games: pd.DataFrame, qb_overrides=None,
+                    assume_backups: bool = False):
+    """Fill missing starters, then check each team's next game (src/qb_status.py):
+    a starter who is Out/Doubtful/inactive is replaced by the backup; one who left
+    his last game early is replaced only if assume_backups. Manual overrides win.
+    Returns (sched, status table)."""
+    sched = _fill_future_qbs(sched, team_games, qb_overrides)
+    try:
+        from src.qb_status import qb_availability
+        status = qb_availability(sched)
+    except Exception as exc:  # e.g. offline: keep the listed starters
+        print(f"QB status check skipped: {exc}")
+        return sched, pd.DataFrame()
+    if status.empty:
+        return sched, status
+    swap = status[(status.status == "out") | ((status.status == "left_early") & assume_backups)]
+    swap = swap[swap.backup_id.notna() & ~swap.team.isin(list((qb_overrides or {}).keys()))]
+    for r in swap.itertuples():
+        for side in ("home", "away"):
+            hit = (sched.game_id == r.game_id) & (sched[f"{side}_team"] == r.team)
+            sched.loc[hit, f"{side}_qb_id"] = r.backup_id
+            sched.loc[hit, f"{side}_qb_name"] = r.backup_name
+    status["applied"] = status.index.isin(swap.index)
+    return sched, status
+
+
 def with_placeholders(team_games: pd.DataFrame, sched: pd.DataFrame) -> pd.DataFrame:
     """Team-game rows plus placeholder rows for games not played yet, so upcoming
     games get pregame features too."""
@@ -240,6 +274,7 @@ def build_game_features(
     params: FeatureParams = FeatureParams(),
     include_future: bool = True,
     qb_overrides=None,
+    assume_backups: bool = False,
 ) -> pd.DataFrame:
     """One row per game (home perspective) with home-minus-away feature diffs,
     the label, and Vegas lines kept only for benchmarking."""
@@ -250,7 +285,9 @@ def build_game_features(
     sched["neutral"] = sched.location == "Neutral"
     if not include_future:
         sched = sched[sched.home_score.notna()]
-    sched = _fill_future_qbs(sched, team_games, qb_overrides)
+        sched = _fill_future_qbs(sched, team_games, qb_overrides)
+    else:
+        sched, _ = apply_qb_status(sched, team_games, qb_overrides, assume_backups)
 
     tg_all = with_placeholders(team_games, sched)
     feats = build_team_features(tg_all, params)
@@ -346,7 +383,7 @@ FEATURE_COLUMNS = BASE_FEATURES + FATIGUE_FEATURES + ["diff_qb_weather_adj"]
 ALL_FEATURES = BASE_FEATURES + FATIGUE_FEATURES + TRAVEL_FEATURES + WEATHER_FEATURES + ["diff_qb_weather_adj"]
 
 
-def rebuild(qb_overrides=None, save: bool = True):
+def rebuild(qb_overrides=None, save: bool = True, assume_backups: bool = False):
     """Refresh weather, rebuild the game feature table and the missing-player list.
     Returns (games, missing_players)."""
     from src.situational import update_game_weather
@@ -355,7 +392,7 @@ def rebuild(qb_overrides=None, save: bool = True):
     update_game_weather()
     tg = pd.read_parquet(PROCESSED_DIR / "team_games.parquet")
     params = load_params()
-    games = build_game_features(tg, params, qb_overrides=qb_overrides)
+    games = build_game_features(tg, params, qb_overrides=qb_overrides, assume_backups=assume_backups)
 
     # Who was missing in each game, including upcoming ones (for explanations and the dashboard).
     log, rosters, outs = load_player_inputs()
@@ -363,7 +400,7 @@ def rebuild(qb_overrides=None, save: bool = True):
     sched = normalize_teams(sched[sched.season.between(FIRST_SEASON, CURRENT_SEASON)].copy(),
                             ["home_team", "away_team"])
     sched["gameday"] = pd.to_datetime(sched.gameday)
-    sched = _fill_future_qbs(sched, tg, qb_overrides)
+    sched, qb_status = apply_qb_status(sched, tg, qb_overrides, assume_backups)
     tg_all = with_placeholders(tg, sched).sort_values(["gameday", "game_id"]).reset_index(drop=True)
     _, details = skill_availability(tg_all, log, rosters, outs, params.player_decay,
                                     params.player_season_decay, params.player_prior_games,
@@ -371,6 +408,8 @@ def rebuild(qb_overrides=None, save: bool = True):
     if save:
         games.to_parquet(PROCESSED_DIR / "games_features.parquet", index=False)
         details.to_parquet(PROCESSED_DIR / "missing_players.parquet", index=False)
+        qb_status.to_parquet(PROCESSED_DIR / "qb_status.parquet", index=False)
+    games.attrs["qb_status"] = qb_status
     return games, details
 
 

@@ -100,6 +100,11 @@ def load_injuries(seasons: Iterable[int], refresh: bool = False) -> pd.DataFrame
     return pd.concat(frames, ignore_index=True)
 
 
+def load_depth_charts(season: int, refresh: bool = False) -> pd.DataFrame:
+    """Daily depth-chart snapshots for a season (2025+ format: team, player, pos_abb, pos_rank, dt)."""
+    return pd.read_parquet(_season_file("depth_charts", season, refresh))
+
+
 def load_ftn(seasons: Iterable[int], refresh: bool = False) -> pd.DataFrame:
     """FTN play charting, 2022+: number of blitzers and pass rushers on each play."""
     seasons = [s for s in seasons if s >= FTN_FIRST_SEASON]

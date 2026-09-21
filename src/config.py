@@ -25,6 +25,7 @@ URLS = {
     "rosters": f"{NFLVERSE_RELEASES}/weekly_rosters/roster_weekly_{{season}}.parquet",
     "injuries": f"{NFLVERSE_RELEASES}/injuries/injuries_{{season}}.parquet",
     "ftn": f"{NFLVERSE_RELEASES}/ftn_charting/ftn_charting_{{season}}.parquet",
+    "depth_charts": f"{NFLVERSE_RELEASES}/depth_charts/depth_charts_{{season}}.parquet",
 }
 INJURIES_FIRST_SEASON = 2009
 FTN_FIRST_SEASON = 2022  # FTN charting (blitzers, pass rushers per play)

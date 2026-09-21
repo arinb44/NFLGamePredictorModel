@@ -35,6 +35,7 @@ src/
   explain.py        exact per-game factor breakdown of a prediction
   predict.py        predict a week (or one game) with probabilities and top factors
   track.py          live 2026 test of the blitz feature (records predictions before kickoff)
+  qb_status.py      is the listed starting QB actually available? (injury report, roster, depth chart)
 notebooks/
   01_data_exploration.ipynb
   02_features.ipynb
@@ -74,6 +75,7 @@ python -m src.predict --refresh                    # pull the latest data, predi
 python -m src.predict --week 5                     # a specific week
 python -m src.predict --game KC@MIA                # one game (away@home)
 python -m src.predict --game KC@MIA --qb KC="Justin Fields"   # what if a backup starts?
+python -m src.predict --assume-backups             # start the backup wherever the listed QB left last game early
 python -m src.track                                # live 2026 blitz-test scoreboard
 ```
 
@@ -93,8 +95,25 @@ KC @ MIA  (Sun Sep 27)
 
 **How the explanation works:** the model is a sum, `log-odds = Σ weight × feature`, with no intercept. Every feature is a home-minus-away difference, so evenly matched teams at a neutral site start at exactly 50%, and each factor's push is exact. Related features, such as offensive EPA and success rate, are summed into groups (Quarterback, Offense, Defense, Missing skill players, Home field, Rest, Fatigue…) because the model's split of credit between overlapping features is arbitrary. Each group's number is its step in a **waterfall**: start at 50%, add groups one at a time (largest first), and record how far each moves the probability. The steps add up exactly to the final probability. `tests/test_explain.py` checks that the factors add up exactly to the model's probability.
 
+**Keeping data current:** `--refresh` re-downloads the current season's play-by-play, player stats, schedule, rosters and injury reports. Current-season files also refresh automatically when they're more than 12 hours old. nflverse updates:
+- play-by-play nightly during the season
+- injury reports on report days (Wednesday–Friday)
+- rosters weekly, depth charts daily
+
+**How fast the model reacts to this season:** team stats blend this season with last season, and last season's weight shrinks 5% with every game played (`prior_fade = 0.95`, chosen on the tuning seasons; it improved the holdout from 0.6283 to 0.6269). Elo, "recent form" and the starting QB's rating also update after every game. Example: Atlanta's 0–2 start moved its week-3 game at Green Bay from GB 58.6% to 65.3% before any QB change.
+
+**Starting QB checks:** for each team's next game, `src/qb_status.py` checks the listed starter:
+
+| Situation | Source | What happens |
+|---|---|---|
+| Out or Doubtful | injury report | the backup starts automatically |
+| Reserve or inactive | weekly roster | the backup starts automatically |
+| Left his last game early (another QB took the final 5+ dropbacks) | play-by-play | a warning only, since it could be an injury or a blowout benching |
+
+For warnings, pass `--qb TEAM="Name"`, or `--assume-backups` to start every flagged backup. The backup is the top other QB on the latest depth chart. In week 3 of 2026 this caught stale schedule listings for Atlanta (Tua inactive, Penix starting) and Minnesota (Murray inactive, Wentz starting), and flagged Jayden Daniels and Caleb Williams after both left week 2 early.
+
 **Upcoming games:**
-- If the schedule doesn't list a starter yet, each team is assumed to start its most recent QB.
+- If the schedule doesn't list a starter yet, each team is assumed to start its most recent QB, then the QB checks above apply.
 - Player absences come from the latest injury report and roster, and are applied to the next week only.
 - Weather comes from the forecast within 16 days, and from the venue's climate average beyond that.
 
@@ -150,7 +169,7 @@ Log loss is the main metric (lower is better) because the goal is accurate proba
 | Holdout 2019–2025 (1,954 games) | Accuracy | Log loss | Brier |
 |---|---|---|---|
 | Vegas moneyline (benchmark) | 0.664 | 0.6083 | 0.2105 |
-| **Logistic regression (final)** | **0.653** | **0.6283** | **0.2191** |
+| **Logistic regression (final)** | **0.652** | **0.6269** | **0.2184** |
 | Random forest | 0.647 | 0.6286 | 0.2194 |
 | Gradient boosting | 0.639 | 0.6300 | 0.2202 |
 | Elo | 0.638 | 0.6367 | 0.2227 |
