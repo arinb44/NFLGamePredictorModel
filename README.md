@@ -111,6 +111,7 @@ The dashboard's **Games** page shows the same breakdown as a chart for any game.
 | Games | Every game in a week with out-of-sample model, Vegas and Elo probabilities; model-vs-Vegas scatter for a season |
 | Players | Biggest skill-player absences and a team's weekly missing share |
 | Situational | Win rates by body-clock kickoff time, time zones traveled, cold shock, wind, and fatigue |
+| Matchups | QB bad-weather sensitivity ranking; pressure map (protection vs. pass rush, with any team's trend by season); offense vs. the blitz; live 2026 test week by week |
 | Model | Calibration, log loss by season, and the model's weights |
 
 ## Features

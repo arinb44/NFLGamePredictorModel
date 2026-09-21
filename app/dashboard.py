@@ -68,7 +68,7 @@ def line_chart(df, x, y, color=None, color_scale=None, tooltip=None, y_title=Non
     """Lines (2px) with a vertical crosshair and tooltip on the nearest x.
     `detail` breaks the line into segments (e.g. one per season)."""
     base = alt.Chart(df).encode(
-        x=alt.X(x, title=x_title, axis=alt.Axis(format=x_format, tickCount="year") if x_format else alt.Axis()),
+        x=alt.X(x, title=x_title, axis=alt.Axis(format=x_format, tickCount="year") if x_format else alt.Axis(labelAngle=0)),
         y=alt.Y(y, title=y_title, scale=alt.Scale(zero=zero)),
     )
     enc = {}
@@ -101,7 +101,8 @@ def bar_chart(df, x, y, tooltip, color=BLUE, horizontal=False, y_title=None, x_t
 
 # ---------------------------------------------------------------- data
 DATA_FILES = [PROCESSED_DIR / "games_features.parquet", PROCESSED_DIR / "oos_predictions.parquet",
-              PROCESSED_DIR / "missing_players.parquet", ROOT / "reports" / "results.json"]
+              PROCESSED_DIR / "missing_players.parquet", ROOT / "reports" / "results.json",
+              PROCESSED_DIR / "team_games.parquet"]
 
 
 @st.cache_data
@@ -114,7 +115,21 @@ def load(versions):
     missing = pd.read_parquet(missing_path) if missing_path.exists() else None
     results_path = ROOT / "reports" / "results.json"
     results = pd.DataFrame(json.loads(results_path.read_text())) if results_path.exists() else None
-    return games, oos, missing, results
+    team_games = pd.read_parquet(PROCESSED_DIR / "team_games.parquet")
+    return games, oos, missing, results, team_games
+
+
+@st.cache_data
+def load_blitz():
+    """Per team-game blitzed / not-blitzed dropbacks and EPA (FTN charting, 2022+)."""
+    from src.config import CURRENT_SEASON, FTN_FIRST_SEASON
+    from src.matchups import load_dropbacks
+    d = load_dropbacks(range(FTN_FIRST_SEASON, CURRENT_SEASON + 1)).dropna(subset=["n_blitzers"])
+    blitz = d.n_blitzers > 0
+    d = d.assign(season=d.game_id.str[:4].astype(int), team=d.posteam,
+                 n_b=blitz.astype(int), s_b=np.where(blitz, d.epa, 0.0),
+                 n_nb=(~blitz).astype(int), s_nb=np.where(blitz, 0.0, d.epa))
+    return d.groupby(["season", "team", "game_id"])[["n_b", "s_b", "n_nb", "s_nb"]].sum().reset_index()
 
 
 @st.cache_data
@@ -145,7 +160,7 @@ def load_model(version):
     return joblib.load(MODELS_DIR / "logistic.joblib")
 
 
-games, oos, missing, results = load(tuple(f.stat().st_mtime if f.exists() else 0 for f in DATA_FILES))
+games, oos, missing, results, team_games = load(tuple(f.stat().st_mtime if f.exists() else 0 for f in DATA_FILES))
 teams = team_long(games)
 played = games[games.home_win.notna()]
 
@@ -159,7 +174,7 @@ st.title("NFL Win Probability Model")
 st.caption("Pregame win probabilities from team efficiency, quarterbacks, player availability, "
            "travel, fatigue and weather. Data: nflverse, Open-Meteo.")
 
-page = st.sidebar.radio("Section", ["Overview", "Teams", "Games", "Players", "Situational", "Model"])
+page = st.sidebar.radio("Section", ["Overview", "Teams", "Games", "Players", "Situational", "Matchups", "Model"])
 
 # ================================================================ Overview
 if page == "Overview":
@@ -471,6 +486,127 @@ elif page == "Situational":
         p["ot"] = np.where(p.away_prev_ot == 1, "OT last game", "No OT")
         with c2:
             rate_bars(p, "ot", "Away team, after an overtime game", "Previous game")
+
+# ================================================================ Matchups
+elif page == "Matchups":
+    st.caption("How specific QBs and units match up with conditions and opponents. "
+               "Only *QB in bad weather* is in the model; the others are shown for context (see README).")
+
+    # ---- QB bad-weather sensitivity
+    st.subheader("QBs in bad weather")
+    st.caption("EPA per dropback in bad weather (15+ mph wind, rain/snow, or 32°F or colder) compared with the same QB's "
+               "normal games, beyond the league-wide drop. Shrunk toward 0 until a QB has ~2,500 bad-weather dropbacks, "
+               "so short careers sit near 0. Values are what the model used for each QB's latest start.")
+    qb_cols = ["season", "gameday", "qb", "team", "qb_weather_sens"]
+    qbs = teams[qb_cols].dropna(subset=["qb"])
+    seasons_qb = sorted(qbs.season.unique(), reverse=True)
+    c1, c2 = st.columns([1, 2])
+    season_q = c1.selectbox("Entering season", seasons_qb, key="qb_season")
+    n_show = c2.slider("QBs to show at each end", 5, 20, 10)
+    latest = qbs[qbs.season == season_q].sort_values("gameday").groupby("qb").tail(1)
+    latest = latest[latest.qb_weather_sens != 0]
+    pick = pd.concat([latest.nsmallest(n_show, "qb_weather_sens"), latest.nlargest(n_show, "qb_weather_sens")]).drop_duplicates("qb")
+    pick["label"] = pick.qb + " (" + pick.team + ")"
+    pick["direction"] = np.where(pick.qb_weather_sens >= 0, "Better in bad weather", "Worse in bad weather")
+    st.altair_chart(bar_chart(
+        pick, "qb_weather_sens:Q", "label:N", horizontal=True, x_title="EPA per dropback vs. typical QB (bad weather)",
+        height=24 * len(pick) + 40,
+        tooltip=["qb", "team", alt.Tooltip("qb_weather_sens:Q", format="+.3f", title="EPA/dropback vs typical")],
+        color_enc=alt.Color("direction:N", legend=alt.Legend(title=None),
+                            scale=alt.Scale(domain=["Better in bad weather", "Worse in bad weather"],
+                                            range=[BLUE, RED]))), use_container_width=True)
+
+    # ---- Pressure map
+    st.subheader("Pressure: protection vs. pass rush")
+    st.caption("Share of dropbacks where the QB was hit or sacked. Right = offense gets hit more (worse protection). "
+               "Up = defense hits the QB more (better pass rush). Dashed lines are league averages.")
+    tg = team_games
+    c1, c2 = st.columns(2)
+    per_team = tg.groupby("season").size() / 32
+    complete = [int(x) for x in per_team[per_team >= 8].index]  # skip the season until teams have ~8 games
+    opts_p = sorted(tg.season.unique(), reverse=True)
+    season_p = c1.selectbox("Season", opts_p, index=opts_p.index(max(complete)), key="pr_season")
+    focus = c2.selectbox("Highlight team", ["None"] + sorted(tg.team.unique()), key="pr_team")
+    pr = (tg[tg.season == season_p].groupby("team")
+          .agg(allowed=("off_pressure_rate", "mean"), generated=("def_pressure_rate", "mean"), games=("game_id", "size"))
+          .reset_index())
+    pr["group"] = np.where(pr.team == focus, focus, "Other teams")
+    base = alt.Chart(pr).encode(
+        x=alt.X("allowed:Q", title="Offense: hit or sacked rate (lower is better)", axis=alt.Axis(format="%"),
+                scale=alt.Scale(zero=False, padding=20)),
+        y=alt.Y("generated:Q", title="Defense: hit or sack rate (higher is better)", axis=alt.Axis(format="%"),
+                scale=alt.Scale(zero=False, padding=20)),
+        tooltip=["team", alt.Tooltip("allowed:Q", format=".1%", title="offense hit/sacked"),
+                 alt.Tooltip("generated:Q", format=".1%", title="defense hit/sack"), "games"])
+    dots = base.mark_circle(size=90, stroke="white", strokeWidth=1).encode(
+        color=alt.Color("group:N", legend=None,
+                        scale=alt.Scale(domain=[focus, "Other teams"], range=[ORANGE, BLUE])))
+    names = base.mark_text(dy=-10, fontSize=10, color=TEXT_2).encode(text="team:N")
+    avg_x = alt.Chart(pd.DataFrame({"v": [pr.allowed.mean()]})).mark_rule(color=GRAY, strokeDash=[4, 4]).encode(x="v:Q")
+    avg_y = alt.Chart(pd.DataFrame({"v": [pr.generated.mean()]})).mark_rule(color=GRAY, strokeDash=[4, 4]).encode(y="v:Q")
+    st.altair_chart(style(avg_x + avg_y + dots + names, 460), use_container_width=True)
+    if focus != "None":
+        trend = (tg[tg.team == focus].groupby("season")
+                 .agg(allowed=("off_pressure_rate", "mean"), generated=("def_pressure_rate", "mean")).reset_index()
+                 .melt(id_vars="season", var_name="side", value_name="rate"))
+        trend["side"] = trend.side.map({"allowed": "Offense hit/sacked", "generated": "Defense hit/sack"})
+        st.markdown(f"**{focus} by season**")
+        st.altair_chart(line_chart(trend, "season:O", "rate:Q", color="side:N", x_title="Season", y_title="Rate",
+                                   color_scale=alt.Scale(domain=["Offense hit/sacked", "Defense hit/sack"],
+                                                         range=[ORANGE, BLUE]),
+                                   tooltip=["season", "side", alt.Tooltip("rate:Q", format=".1%")], height=260),
+                        use_container_width=True)
+
+    # ---- Blitz vulnerability
+    st.subheader("Offense vs. the blitz (FTN charting, 2022+)")
+    st.caption("EPA per dropback when blitzed minus when not blitzed, for the season. The dashed line is the league "
+               "average; left of it = hurt by the blitz more than most offenses, right = handles it better. "
+               "One season is a small sample, so expect big swings year to year.")
+    bl = load_blitz()
+    opts_b = sorted(bl.season.unique(), reverse=True)
+    games_per = bl.groupby("season").game_id.nunique()
+    default_b = max(int(x) for x in games_per[games_per >= 100].index)
+    season_b = st.selectbox("Season", opts_b, index=opts_b.index(default_b), key="bl_season")
+    b = bl[bl.season == season_b]
+    league_gap = float((b.s_b.sum() / b.n_b.sum()) - (b.s_nb.sum() / b.n_nb.sum()))  # plain float: numpy repr breaks Vega expressions
+    bt = b.groupby("team")[["n_b", "s_b", "n_nb", "s_nb"]].sum().reset_index()
+    bt["gap"] = bt.s_b / bt.n_b - bt.s_nb / bt.n_nb
+    bt["blitz_rate_faced"] = bt.n_b / (bt.n_b + bt.n_nb)
+    bars = alt.Chart(bt).mark_bar(cornerRadiusEnd=4).encode(
+        y=alt.Y("team:N", sort="x", title=None, axis=alt.Axis(labelOverlap=False)),
+        x=alt.X("gap:Q", title="EPA/dropback: blitzed minus not blitzed"),
+        color=alt.condition(alt.datum.gap < league_gap, alt.value(RED), alt.value(BLUE)),
+        tooltip=["team", alt.Tooltip("gap:Q", format="+.3f", title="blitz gap"),
+                 alt.Tooltip("blitz_rate_faced:Q", format=".0%", title="blitzed on"),
+                 alt.Tooltip("n_b:Q", title="blitzed dropbacks")])
+    ref = alt.Chart(pd.DataFrame({"v": [league_gap]})).mark_rule(color=GRAY, strokeDash=[4, 4]).encode(x="v:Q")
+    st.altair_chart(style(bars + ref, 20 * len(bt) + 40), use_container_width=True)
+    st.caption(f"League-average drop when blitzed: {league_gap:+.3f} EPA/dropback. "
+               "Red = worse than the league-average drop; blue = better.")
+
+    # ---- Live test over time
+    st.subheader("Live 2026 test: week by week")
+    from src.track import _load as load_tracking
+    tr = load_tracking()
+    tr = tr[tr.season == tr.season.max()].merge(played[["game_id", "home_win"]], on="game_id") if len(tr) else tr
+    if len(tr):
+        rows = []
+        for name, label in [("p_logistic", "Main model"), ("p_logistic_blitz", "Main + blitz"), ("p_vegas", "Vegas")]:
+            d = tr.dropna(subset=[name]).sort_values("week")
+            p = d[name].clip(1e-6, 1 - 1e-6)
+            d = d.assign(ll=-(d.home_win * np.log(p) + (1 - d.home_win) * np.log(1 - p)))
+            cum = d.groupby("week").agg(ll_sum=("ll", "sum"), n=("ll", "size")).cumsum()
+            for wk, r in cum.iterrows():
+                rows.append({"week": int(wk), "model": label, "log_loss": r.ll_sum / r.n, "games": int(r.n)})
+        live = pd.DataFrame(rows)
+        st.caption("Season-to-date log loss after each week (lower is better). The decision is made after the regular season.")
+        st.altair_chart(line_chart(live, "week:O", "log_loss:Q", color="model:N", x_title="Week", y_title="Log loss so far",
+                                   color_scale=alt.Scale(domain=["Main model", "Main + blitz", "Vegas"],
+                                                         range=[BLUE, AQUA, ORANGE]),
+                                   tooltip=["week", "model", alt.Tooltip("log_loss:Q", format=".4f"), "games"],
+                                   height=300), use_container_width=True)
+    else:
+        st.info("No live tracking yet. Run `python -m src.predict`.")
 
 # ================================================================ Model
 elif page == "Model":
