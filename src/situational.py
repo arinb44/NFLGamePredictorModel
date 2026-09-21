@@ -12,6 +12,8 @@ Fatigue (only from games already played)
     prev_snaps      offensive + defensive snaps in the previous game
     prev_def_snaps  defensive snaps in the previous game
     snap_load       average snaps over the previous 3 games
+    def_snap_load   average defensive snaps over the previous 3 games
+    prev_def_ot_snaps  defensive snaps in overtime last game
     prev_ot         previous game went to overtime
     road_streak     consecutive road games before this one
 
@@ -70,13 +72,15 @@ def _travel(rows: pd.DataFrame, venues: pd.DataFrame, bases: pd.DataFrame) -> pd
 
 
 def _fatigue(rows: pd.DataFrame, team_games: pd.DataFrame) -> pd.DataFrame:
-    snaps = team_games[["game_id", "team", "off_plays", "def_plays"]]
+    snaps = team_games[["game_id", "team", "off_plays", "def_plays", "def_ot_plays"]]
     r = rows.merge(snaps, on=["game_id", "team"], how="left").sort_values(["team", "gameday"])
     r["snaps"] = r.off_plays + r.def_plays
     g = r.groupby(["team", "season"])
     r["prev_snaps"] = g.snaps.shift(1)
     r["prev_def_snaps"] = g.def_plays.shift(1)
     r["snap_load"] = g.snaps.transform(lambda s: s.shift(1).rolling(3, min_periods=1).mean())
+    r["def_snap_load"] = g.def_plays.transform(lambda s: s.shift(1).rolling(3, min_periods=1).mean())
+    r["prev_def_ot_snaps"] = g.def_ot_plays.shift(1).fillna(0)
     r["prev_ot"] = g.overtime.shift(1).fillna(0)
     # Consecutive road games before this one (neutral counts as road).
     away = (r.is_home == 0).astype(int)
@@ -89,9 +93,10 @@ def _fatigue(rows: pd.DataFrame, team_games: pd.DataFrame) -> pd.DataFrame:
         streak.extend(out)
     r["road_streak"] = streak
     # Week 1 (no previous game this season): use the league average.
-    for c in ["prev_snaps", "prev_def_snaps", "snap_load"]:
+    for c in ["prev_snaps", "prev_def_snaps", "snap_load", "def_snap_load"]:
         r[c] = r[c].fillna(r[c].mean())
-    return r[["game_id", "team", "prev_snaps", "prev_def_snaps", "snap_load", "prev_ot", "road_streak"]]
+    return r[["game_id", "team", "prev_snaps", "prev_def_snaps", "snap_load", "def_snap_load",
+              "prev_def_ot_snaps", "prev_ot", "road_streak"]]
 
 
 def _cold_shock(rows: pd.DataFrame, venues: pd.DataFrame, bases: pd.DataFrame,

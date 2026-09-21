@@ -36,8 +36,8 @@ GROUPS = {
     "Elo rating": ["diff_elo"],
     "Missing skill players": ["diff_skill_missing", "diff_skill_missing_top"],
     "Rest": ["diff_rest"],
-    "Fatigue": ["diff_prev_snaps", "diff_prev_def_snaps", "diff_snap_load", "diff_prev_ot",
-                "diff_road_streak"],
+    "Fatigue": ["diff_prev_def_snaps", "diff_def_snap_load", "diff_prev_def_ot_snaps", "diff_prev_ot",
+                "diff_road_streak", "diff_prev_snaps", "diff_snap_load"],
     "Home field": ["home_field"],
     "Divisional game": ["div_game"],
 }
@@ -93,9 +93,11 @@ def _details(row: pd.Series, missing: pd.DataFrame) -> Dict[str, str]:
         "Divisional game": "division rivals" if row.div_game else "",
     }
     fat = []
-    if row.home_prev_ot or row.away_prev_ot:
-        fat.append("OT last game: " + ", ".join(t for t, ot in [(h, row.home_prev_ot), (a, row.away_prev_ot)] if ot))
-    fat.append(f"defensive snaps last game {h} {row.home_prev_def_snaps:.0f} vs {a} {row.away_prev_def_snaps:.0f}")
+    for t, ot, ot_snaps in [(h, row.home_prev_ot, row.home_prev_def_ot_snaps),
+                            (a, row.away_prev_ot, row.away_prev_def_ot_snaps)]:
+        if ot:
+            fat.append(f"{t} played OT last game ({ot_snaps:.0f} defensive OT snaps)")
+    fat.append(f"defensive snaps/game, last 3: {h} {row.home_def_snap_load:.0f} vs {a} {row.away_def_snap_load:.0f}")
     d["Fatigue"] = "; ".join(fat)
     if missing is not None:
         m = missing[missing.game_id == row.game_id].sort_values("missing_value", ascending=False)

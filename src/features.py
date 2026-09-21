@@ -280,8 +280,10 @@ def build_game_features(
 
 TRAVEL_FEATURES = ["diff_travel_km", "diff_tz_east", "diff_tz_west", "diff_early_clock",
                    "diff_late_clock", "diff_altitude_gain"]
-FATIGUE_FEATURES = ["diff_prev_snaps", "diff_prev_def_snaps", "diff_snap_load", "diff_prev_ot",
-                    "diff_road_streak"]
+# Defense-focused: defensive snaps are the opponent's plays, and the back seven
+# rarely rotates. Beat total snaps on the tuning seasons (0.6154 vs 0.6156).
+FATIGUE_FEATURES = ["diff_prev_def_snaps", "diff_def_snap_load", "diff_prev_def_ot_snaps",
+                    "diff_prev_ot", "diff_road_streak"]
 WEATHER_FEATURES = ["indoor", "temp_f", "wind_mph", "precip_mm", "diff_cold_shock",
                     "wind_pass_edge", "precip_pass_edge"]
 

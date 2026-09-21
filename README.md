@@ -78,15 +78,15 @@ Example output (2026 week 3):
 
 ```
 KC @ MIA  (Sun Sep 27)
-  MIA 35.4%  |  KC 64.6%   ->  KC favored at 64.6%   (Vegas: MIA 14.8%)
+  MIA 35.8%  |  KC 64.2%   ->  KC favored at 64.2%   (Vegas: MIA 14.8%)
   Top factors:
-     KC + 8.9%  Quarterback            Malik Willis +0.00 vs Patrick Mahomes +0.22 EPA/play
-    MIA + 6.8%  Fatigue                OT last game: KC; defensive snaps last game MIA 47 vs KC 63
-    MIA + 6.1%  Home field             MIA at home
-     KC + 5.6%  Defense                MIA +0.036 vs KC -0.017 EPA/play allowed (lower is better)
+     KC + 7.2%  Quarterback            Malik Willis +0.04 vs Patrick Mahomes +0.18 EPA/play
+    MIA + 6.2%  Home field             MIA at home
+     KC + 5.7%  Defense                MIA +0.036 vs KC -0.017 EPA/play allowed (lower is better)
+     KC + 5.3%  Scoring & record       MIA -2.7 vs KC +1.5 point diff/game
 ```
 
-With `--qb KC="Justin Fields"` the same game drops to KC 51.3%.
+`--qb KC="Justin Fields"` shows how much the Mahomes-to-backup drop is worth.
 
 **How the explanation works:** the model is a sum, `log-odds = Σ weight × feature`, with no intercept. Every feature is a home-minus-away difference, so evenly matched teams at a neutral site start at exactly 50%, and each factor's push is exact. Related features, such as offensive EPA and success rate, are summed into groups (Quarterback, Offense, Defense, Missing skill players, Home field, Rest, Fatigue…) because the model's split of credit between overlapping features is arbitrary. Each group's number is how far the probability would move if that group were even. `tests/test_explain.py` checks that the factors add up exactly to the model's probability.
 
@@ -126,7 +126,7 @@ lean on last year and later weeks on current form.
 | Skill players | share of the team's usual RB/WR/TE touches that is unavailable (injured, suspended, resting), and the biggest single absence |
 | Strength | Elo rating |
 | Situation | rest days, home-field advantage (trailing 3-season league home margin, 0 at neutral sites), divisional game |
-| Fatigue | offensive + defensive snaps last game, defensive snaps last game, 3-game snap load, overtime last game, consecutive road games |
+| Fatigue | defensive snaps last game, defensive snaps per game over the last 3 games, defensive snaps in overtime last game, overtime last game, consecutive road games |
 | Travel* | distance, time zones crossed east/west, body-clock kickoff time (a 1 PM ET game is 10 AM for a West Coast team), altitude gain |
 | Weather* | indoor, temperature, wind, precipitation, cold shock vs. the team's home climate, wind × passing edge |
 
@@ -144,9 +144,9 @@ Log loss is the main metric (lower is better) because the goal is accurate proba
 | Holdout 2019–2025 (1,954 games) | Accuracy | Log loss | Brier |
 |---|---|---|---|
 | Vegas moneyline (benchmark) | 0.664 | 0.6083 | 0.2105 |
-| **Logistic regression (final)** | **0.650** | **0.6284** | **0.2191** |
-| Random forest | 0.644 | 0.6294 | 0.2198 |
-| Gradient boosting | 0.647 | 0.6295 | 0.2200 |
+| **Logistic regression (final)** | **0.652** | **0.6278** | **0.2188** |
+| Random forest | 0.646 | 0.6292 | 0.2197 |
+| Gradient boosting | 0.639 | 0.6300 | 0.2202 |
 | Elo | 0.638 | 0.6367 | 0.2227 |
 | Always pick home | 0.537 | 0.6929 | 0.2499 |
 
@@ -190,7 +190,13 @@ Each group was added separately and kept only if it improved log loss on the tun
 | Base + weather | 0.6168 |
 | Base + travel | 0.6168 |
 
-- **Fatigue** was kept. On the holdout it was neutral (0.6285 vs. 0.6282 without), which is within noise.
+- **Fatigue** was kept. The first version (total snaps) was neutral on the holdout.
+- **Defense-focused fatigue** replaced it and beat it on the tuning seasons (0.6154 vs. 0.6156). Defensive snaps are the opponent's plays, and linebackers and defensive backs play 88–90% of snaps. Snap counts also show the defensive line is the most-rotated group (60%) while the offensive line plays 97%, so the case for defense-focused fatigue is that it's time spent on the field, not a lack of substitution. What mattered:
+  - the 3-game defensive load, at about −1.5 points per 10 extra snaps per game
+  - defensive snaps in overtime, at about −0.4 points per snap
+  - an overtime flag on top of those
+- **QB ratings** weight each earlier season at 80% of the one after it (`qb_season_decay = 0.8`). This was a judgment call: tuning slightly preferred equal weight for a QB's whole career (by 0.0002, within noise), but that rated Deshaun Watson on his Houston peak.
+- **On the holdout, each change improved log loss by 0.0003** (0.6284 → 0.6278 combined).
 - **The West Coast early-kickoff effect** doesn't show up once team strength is controlled for. West Coast teams traveling east won 30% from 2006–2012 but 61% from 2019–2025.
 - **Cold shock is real but rare.** Road teams playing 25°F+ colder than their home climate win 38.9%, vs. 45% otherwise, but that's only about 10% of outdoor games.
 - **Data fixes:** the nflverse schedule lists the 2025 international games (São Paulo, Dublin, London, Berlin, Madrid) at U.S. stadiums. `venues.py` corrects them.

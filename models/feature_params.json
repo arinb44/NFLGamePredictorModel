@@ -5,7 +5,7 @@
   "form_decay": 0.7,
   "form_prior_games": 1.0,
   "qb_decay": 1.0,
-  "qb_season_decay": 1.0,
+  "qb_season_decay": 0.8,
   "qb_prior_plays": 150.0,
   "qb_prior_epa": -0.05,
   "qb_prior_cpoe": -2.0,

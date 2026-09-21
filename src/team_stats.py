@@ -20,7 +20,7 @@ PBP_COLUMNS = [
     "game_id", "posteam", "defteam", "play_type", "epa", "wp", "success",
     "pass", "rush", "qb_dropback", "sack", "interception", "fumble_lost",
     "yards_gained", "qb_kneel", "qb_spike", "yardline_100", "fixed_drive",
-    "fixed_drive_result", "special_teams_play", "two_point_attempt",
+    "fixed_drive_result", "special_teams_play", "two_point_attempt", "qtr",
 ]
 
 ST_PLAY_TYPES = {"kickoff", "punt", "field_goal", "extra_point"}
@@ -57,6 +57,7 @@ def _offense_stats(pbp: pd.DataFrame) -> pd.DataFrame:
     g = plays.groupby(["game_id", "posteam"])
     out = pd.DataFrame({
         "plays": g.size(),
+        "ot_plays": (plays.qtr == 5).groupby([plays.game_id, plays.posteam]).sum(),
         "epa_per_play": g.epa.mean(),
         "success_rate": g.success.mean(),
         "epa_neutral": _masked_mean(plays.epa, plays.neutral),
