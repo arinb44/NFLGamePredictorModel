@@ -1,0 +1,18 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Data and models (re-downloadable / regenerable)
+data/
+models/*.joblib
+models/*.pkl
+
+# OS / editor
+.DS_Store
+.vscode/
+.idea/
