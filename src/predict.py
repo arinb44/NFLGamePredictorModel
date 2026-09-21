@@ -93,6 +93,11 @@ def main():
             raise SystemExit(f"{args.game} is not in {args.season} week {week}.")
 
     bundle = joblib.load(MODELS_DIR / "logistic.joblib")
+    if not overrides:  # record both models for the live blitz test (src/track.py)
+        from src.track import record
+        test_path = MODELS_DIR / "logistic_blitz.joblib"
+        if test_path.exists():
+            record(season, {"logistic": bundle, "logistic_blitz": joblib.load(test_path)})
     exps = explain(bundle, g.reset_index(drop=True), missing, top=args.top)
     g = g.reset_index(drop=True)
     vegas = moneyline_prob(g.home_moneyline, g.away_moneyline)

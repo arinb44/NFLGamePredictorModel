@@ -515,6 +515,22 @@ elif page == "Model":
                                        tooltip=["season", "model", alt.Tooltip("log_loss:Q", format=".4f")],
                                        height=380), use_container_width=True)
 
+        st.subheader("Live 2026 test: blitz vulnerability")
+        st.caption("Rule set before any 2026 results: after the regular season, if the model *with* blitz "
+                   "vulnerability has lower log loss on 2026 games, it joins the model. Predictions are recorded "
+                   "before kickoff each week (weeks already played were backfilled as if live).")
+        try:
+            from src.track import TRACK_PATH, scoreboard
+            sb = scoreboard().rename(index={"logistic": "Main model", "logistic_blitz": "Main + blitz", "vegas": "Vegas"})
+            sb["games"] = sb.games.astype(int)
+            st.dataframe(sb.style.format({"accuracy": "{:.1%}", "log_loss": "{:.4f}", "brier": "{:.4f}"}),
+                         use_container_width=True)
+            if sb.loc["Main model", "games"] < 100:
+                st.caption(f"Only {sb.loc['Main model', 'games']} games so far — far too few to judge. "
+                           "Differences this early are mostly luck.")
+        except Exception as exc:  # tracking file not created yet
+            st.info(f"No live tracking yet ({exc}). Run `python -m src.predict`.")
+
         st.subheader("What the model weighs most")
         st.caption("Logistic regression weights on standardized features: change in log-odds of a home win "
                    "per one standard deviation. Blue favors the home team, red the away team.")

@@ -37,6 +37,12 @@ MODELS = {
 }
 FINAL_MODEL = "logistic"  # best log loss on the tuning seasons
 
+# Live 2026 test (see src/track.py): the final model plus blitz vulnerability, whose
+# data starts in 2022 and so can't be judged on the tuning seasons.
+TEST_MODELS = {
+    "logistic_blitz": (lambda: logistic(C=0.003), FEATURE_COLUMNS + ["diff_blitz_matchup"]),
+}
+
 
 def evaluate(games: pd.DataFrame, names) -> pd.DataFrame:
     tables = []
@@ -49,7 +55,7 @@ def evaluate(games: pd.DataFrame, names) -> pd.DataFrame:
 
 
 def fit_final(games: pd.DataFrame, name: str):
-    factory, cols = MODELS[name]
+    factory, cols = {**MODELS, **TEST_MODELS}[name]
     model = factory()
     model.fit(games[cols], games.home_win)
     path = MODELS_DIR / f"{name}.joblib"
@@ -89,6 +95,8 @@ if __name__ == "__main__":
 
     model, path = fit_final(games, args.final)
     print(f"\nSaved {args.final} trained on {len(games):,} games to {path}")
+    for name in TEST_MODELS:
+        print(f"Saved test model {name} to {fit_final(games, name)[1]}")
     if args.final == "logistic":
         print("\nTop coefficients (log-odds per 1 std dev):")
         print(coefficients(model).head(15).round(3).to_string())

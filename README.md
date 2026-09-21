@@ -34,6 +34,7 @@ src/
   train.py          evaluates models, fits the final model, saves it to models/
   explain.py        exact per-game factor breakdown of a prediction
   predict.py        predict a week (or one game) with probabilities and top factors
+  track.py          live 2026 test of the blitz feature (records predictions before kickoff)
 notebooks/
   01_data_exploration.ipynb
   02_features.ipynb
@@ -73,6 +74,7 @@ python -m src.predict --refresh                    # pull the latest data, predi
 python -m src.predict --week 5                     # a specific week
 python -m src.predict --game KC@MIA                # one game (away@home)
 python -m src.predict --game KC@MIA --qb KC="Justin Fields"   # what if a backup starts?
+python -m src.track                                # live 2026 blitz-test scoreboard
 ```
 
 Example output (2026 week 3):
@@ -182,7 +184,16 @@ Random forest and gradient boosting were tuned on the tuning seasons with all fe
   - Least sensitive: Drake Maye.
   - Jalen Hurts is about average. His completion % drops in bad weather, but his EPA doesn't drop more than other QBs'.
 - **Pressure:** the Chargers were the 4th-most pressured offense in 2025, allowing a hit or sack on 20% of dropbacks. But they are among the *best* offenses when blitzed. Their protection problem is losing one-on-one, not the blitz.
-- **Blitz vulnerability** shows the largest gain of anything tested so far. Because that evidence comes from holdout seasons, it will be judged on the 2026 season before joining the model.
+- **Blitz vulnerability** shows the largest gain of anything tested so far. Because that evidence comes from holdout seasons, it is being tested live on the 2026 season (below).
+
+### Live 2026 test: blitz vulnerability
+
+The rule was set before any 2026 results: **after the 2026 regular season, if the model with blitz vulnerability (`logistic_blitz`) has lower log loss on 2026 games than the main model, blitz vulnerability joins the model.**
+
+- `python -m src.train` saves both models.
+- Every `python -m src.predict` run records both models' probabilities for games that haven't kicked off, in `reports/live_tracking.csv`. A game's row stops updating at kickoff.
+- Weeks played before tracking started were backfilled as if live, with models trained only on earlier games: `python -m src.track --backfill`.
+- `python -m src.track` prints the scoreboard, which is also on the dashboard's Model page.
 
 ### Skill-player availability
 
@@ -228,4 +239,4 @@ Each group was added separately and kept only if it improved log loss on the tun
 - [x] Interactive dashboard
 - [x] Random forest and gradient boosting, plus calibration and ensembles (logistic regression kept)
 - [x] Per-game factor explanations and prediction CLI (with QB what-ifs)
-- [x] Matchup features: QB weather sensitivity (in the model), pass protection vs. pass rush (not helpful), blitz vulnerability (pending a 2026 test)
+- [x] Matchup features: QB weather sensitivity (in the model), pass protection vs. pass rush (not helpful), blitz vulnerability (live 2026 test running)
