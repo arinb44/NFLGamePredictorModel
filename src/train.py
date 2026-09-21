@@ -10,8 +10,8 @@ import warnings
 import joblib
 import pandas as pd
 
-from src.config import MODELS_DIR, ROOT
-from src.evaluate import compare, load_played_games, walk_forward
+from src.config import MODELS_DIR, PROCESSED_DIR, ROOT
+from src.evaluate import baseline_predictions, compare, load_played_games, walk_forward
 from src.features import FEATURE_COLUMNS
 from src.models import logistic
 from src.tune_features import load_params
@@ -65,6 +65,12 @@ if __name__ == "__main__":
     results = evaluate(games, args.models)
     print(results.round(4).to_string())
     (ROOT / "reports" / "results.json").write_text(results.reset_index().to_json(orient="records", indent=2))
+
+    # Out-of-sample predictions (each season predicted by a model trained only on
+    # earlier seasons) - used by the dashboard.
+    oos = walk_forward(games, MODELS[args.final], FEATURE_COLUMNS, range(TUNING.start, HOLDOUT.stop))
+    oos = oos.merge(baseline_predictions(games), on="game_id")
+    oos.to_parquet(PROCESSED_DIR / "oos_predictions.parquet", index=False)
 
     model, path = fit_final(games, args.final)
     print(f"\nSaved {args.final} trained on {len(games):,} games to {path}")

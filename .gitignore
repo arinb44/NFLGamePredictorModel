@@ -16,3 +16,6 @@ models/*.pkl
 .DS_Store
 .vscode/
 .idea/
+
+# Local tool config
+.claude/

@@ -23,6 +23,7 @@ from src.config import CURRENT_SEASON, FIRST_SEASON, PROCESSED_DIR
 from src.data_loader import load_player_stats, load_schedules
 from src.elo import compute_elo
 from src.players import load_report_outs, load_roster_status, load_skill_log, skill_availability
+from src.situational import load_game_weather, situational_features
 from src.team_stats import normalize_teams
 
 
@@ -218,6 +219,14 @@ def build_game_features(
     away = feats[["game_id", "team"] + feat_cols].rename(
         columns={"team": "away_team", **{c: f"away_{c}" for c in feat_cols}})
 
+    team_sit, game_sit = situational_features(sched, team_games, load_game_weather())
+    sit_cols = [c for c in team_sit.columns if c not in ("game_id", "team", "home_venue")]
+    home = home.merge(team_sit[["game_id", "team"] + sit_cols].rename(
+        columns={"team": "home_team", **{c: f"home_{c}" for c in sit_cols}}), on=["game_id", "home_team"])
+    away = away.merge(team_sit[["game_id", "team"] + sit_cols].rename(
+        columns={"team": "away_team", **{c: f"away_{c}" for c in sit_cols}}), on=["game_id", "away_team"])
+    feat_cols = feat_cols + sit_cols
+
     keep = ["game_id", "season", "week", "game_type", "gameday", "home_team", "away_team",
             "home_score", "away_score", "neutral", "div_game", "roof",
             "spread_line", "home_moneyline", "away_moneyline", "home_qb_name", "away_qb_name"]
@@ -225,26 +234,44 @@ def build_game_features(
 
     elo = compute_elo(sched[["game_id", "season", "gameday", "home_team", "away_team",
                              "home_score", "away_score", "neutral"]])
-    g = g.merge(elo, on="game_id")
+    g = g.merge(elo, on="game_id").merge(game_sit, on="game_id", how="left")
 
     for c in feat_cols:
         g[f"diff_{c}"] = g[f"home_{c}"] - g[f"away_{c}"]
     g["diff_elo"] = g.home_elo_pre - g.away_elo_pre
     g["home_field"] = np.where(g.neutral, 0.0, g.season.map(_league_home_margin(sched)))
     g["div_game"] = g.div_game.astype(int)
+    g["diff_travel_km"] = g.diff_travel_km / 1000  # thousands of km
+    g["diff_tz_east"] = np.clip(g.home_tz_shift, 0, None) - np.clip(g.away_tz_shift, 0, None)
+    g["diff_tz_west"] = np.clip(-g.home_tz_shift, 0, None) - np.clip(-g.away_tz_shift, 0, None)
+    # Strong wind or rain blunts a passing-offense edge.
+    g["wind_pass_edge"] = np.clip(g.wind_mph - 10, 0, None) * g.diff_off_pass_epa
+    g["precip_pass_edge"] = np.clip(g.precip_mm, 0, 3) * g.diff_off_pass_epa
 
     g["home_win"] = np.where(g.home_score > g.away_score, 1.0,
                              np.where(g.home_score < g.away_score, 0.0, np.nan))
     return g.sort_values(["gameday", "game_id"]).reset_index(drop=True)
 
 
-FEATURE_COLUMNS = (
+TRAVEL_FEATURES = ["diff_travel_km", "diff_tz_east", "diff_tz_west", "diff_early_clock",
+                   "diff_late_clock", "diff_altitude_gain"]
+FATIGUE_FEATURES = ["diff_prev_snaps", "diff_prev_def_snaps", "diff_snap_load", "diff_prev_ot",
+                    "diff_road_streak"]
+WEATHER_FEATURES = ["indoor", "temp_f", "wind_mph", "precip_mm", "diff_cold_shock",
+                    "wind_pass_edge", "precip_pass_edge"]
+
+BASE_FEATURES = (
     [f"diff_{c}" for c in TEAM_STATS]
     + [f"diff_form_{c}" for c in FORM_STATS]
     + ["diff_qb_epa", "diff_qb_cpoe", "diff_qb_experience", "diff_qb_changed",
        "diff_skill_missing", "diff_skill_missing_top",
        "diff_rest", "diff_elo", "home_field", "div_game"]
 )
+# The logistic regression uses base + fatigue: travel and weather did not improve
+# log loss on the tuning seasons. All groups stay available to the tree models,
+# which can pick up interactions (e.g. a warm-weather team in the cold).
+FEATURE_COLUMNS = BASE_FEATURES + FATIGUE_FEATURES
+ALL_FEATURES = BASE_FEATURES + FATIGUE_FEATURES + TRAVEL_FEATURES + WEATHER_FEATURES
 
 
 if __name__ == "__main__":
@@ -256,6 +283,14 @@ if __name__ == "__main__":
     games = build_game_features(tg, params)
     path = PROCESSED_DIR / "games_features.parquet"
     games.to_parquet(path, index=False)
+
+    # Who was missing in each game (for explanations and the dashboard).
+    log, rosters, outs = load_player_inputs()
+    tg_all = tg.sort_values(["gameday", "game_id"]).reset_index(drop=True)
+    _, details = skill_availability(tg_all, log, rosters, outs, params.player_decay,
+                                    params.player_season_decay, params.player_prior_games,
+                                    params.part_decay, params.part_season_decay, return_details=True)
+    details.to_parquet(PROCESSED_DIR / "missing_players.parquet", index=False)
     played = games.home_win.notna().sum()
     print(f"Wrote {len(games):,} games ({played:,} played) with "
           f"{len(FEATURE_COLUMNS)} features to {path}")

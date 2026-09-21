@@ -8,3 +8,4 @@ shap>=0.44
 jupyter>=1.0
 urllib3<2  # macOS system Python 3.9 ships LibreSSL
 pytest>=7.0
+streamlit>=1.30
