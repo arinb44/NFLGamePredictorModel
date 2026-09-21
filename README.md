@@ -81,7 +81,7 @@ Log loss is the main metric (lower is better) because the goal is accurate proba
 | Vegas moneyline (benchmark) | 0.664 | 0.6083 | 0.2105 |
 | **Logistic regression** | **0.647** | **0.6295** | **0.2199** |
 | Elo | 0.638 | 0.6367 | 0.2227 |
-| Always pick home | ~0.54 | ~0.69 | ~0.25 |
+| Always pick home | 0.537 | 0.6929 | 0.2499 |
 
 The strongest factors are the starting QB's EPA/play, defensive explosive plays allowed, Elo, offensive success rate, and QB changes.
 
