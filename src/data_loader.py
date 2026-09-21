@@ -18,6 +18,7 @@ import requests
 from src.config import (
     CURRENT_SEASON,
     FIRST_SEASON,
+    INJURIES_FIRST_SEASON,
     RAW_DIR,
     STALE_AFTER_HOURS,
     URLS,
@@ -77,6 +78,20 @@ def load_player_stats(seasons: Iterable[int], refresh: bool = False) -> pd.DataF
     return pd.concat(frames, ignore_index=True)
 
 
+def load_rosters(seasons: Iterable[int], refresh: bool = False) -> pd.DataFrame:
+    """Weekly rosters: every player on each team each week, with status
+    (ACT active, RES reserve/IR, INA gameday inactive, CUT, TRD, ...)."""
+    frames = [pd.read_parquet(_season_file("rosters", s, refresh)) for s in seasons]
+    return pd.concat(frames, ignore_index=True)
+
+
+def load_injuries(seasons: Iterable[int], refresh: bool = False) -> pd.DataFrame:
+    """Weekly injury reports (Out / Doubtful / Questionable), 2009+."""
+    seasons = [s for s in seasons if s >= INJURIES_FIRST_SEASON]
+    frames = [pd.read_parquet(_season_file("injuries", s, refresh)) for s in seasons]
+    return pd.concat(frames, ignore_index=True)
+
+
 def load_ngs(kind: str = "passing", refresh: bool = False) -> pd.DataFrame:
     """Next Gen Stats (2016+). kind is 'passing', 'rushing' or 'receiving'."""
     dest = RAW_DIR / f"ngs_{kind}.parquet"
@@ -92,6 +107,9 @@ def download_all(start: int = FIRST_SEASON, end: int = CURRENT_SEASON) -> None:
     for s in seasons:
         _season_file("pbp", s, refresh=False)
         _season_file("player_stats", s, refresh=False)
+        _season_file("rosters", s, refresh=False)
+        if s >= INJURIES_FIRST_SEASON:
+            _season_file("injuries", s, refresh=False)
     print(f"Done. Cached files are in {RAW_DIR}")
 
 

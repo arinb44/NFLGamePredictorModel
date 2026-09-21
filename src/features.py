@@ -14,6 +14,7 @@ Usage:
     python -m src.features      # writes data/processed/games_features.parquet
 """
 from dataclasses import dataclass
+from functools import lru_cache
 
 import numpy as np
 import pandas as pd
@@ -21,6 +22,7 @@ import pandas as pd
 from src.config import CURRENT_SEASON, FIRST_SEASON, PROCESSED_DIR
 from src.data_loader import load_player_stats, load_schedules
 from src.elo import compute_elo
+from src.players import load_report_outs, load_roster_status, load_skill_log, skill_availability
 from src.team_stats import normalize_teams
 
 
@@ -37,6 +39,11 @@ class FeatureParams:
     qb_prior_plays: float = 150.0 # plays of weight given to the replacement-level prior
     qb_prior_epa: float = -0.05   # unknown QBs are assumed slightly below average
     qb_prior_cpoe: float = -2.0
+    player_decay: float = 0.95        # skill-player value: weight per game back
+    player_season_decay: float = 0.7  # ... and per season back
+    player_prior_games: float = 4.0   # shrinkage toward 0 for players with few games
+    part_decay: float = 0.8           # participation memory (per team game)
+    part_season_decay: float = 0.5    # participation carried into a new season
 
 
 TEAM_STATS = [
@@ -143,13 +150,27 @@ def _qb_changed(tg: pd.DataFrame) -> pd.Series:
     return (prev.notna() & (prev != tg.qb_id)).astype(int)
 
 
+@lru_cache(maxsize=1)
+def _player_inputs():
+    """(skill log, roster status, injury-report outs). Cached: loaded once per process."""
+    return load_skill_log(), load_roster_status(), load_report_outs()
+
+
+def load_player_inputs():
+    return _player_inputs()
+
+
 def build_team_features(tg: pd.DataFrame, p: FeatureParams = FeatureParams()) -> pd.DataFrame:
     tg = tg.sort_values(["gameday", "game_id"]).reset_index(drop=True)
     roll = _rolling_pregame(tg, TEAM_STATS, p.decay, p.prior_games, p.carryover)
     form = _rolling_pregame(tg, FORM_STATS, p.form_decay, p.form_prior_games, 0.0)
     form.columns = [f"form_{c}" for c in FORM_STATS]
     qb = _qb_pregame(tg, p)
-    feats = pd.concat([tg[["game_id", "team", "season", "gameday", "rest"]], roll, form, qb], axis=1)
+    log, rosters, outs = load_player_inputs()
+    skill = skill_availability(tg, log, rosters, outs, p.player_decay, p.player_season_decay,
+                               p.player_prior_games, p.part_decay, p.part_season_decay)
+    feats = pd.concat([tg[["game_id", "team", "season", "gameday", "rest"]], roll, form, qb, skill],
+                      axis=1)
     feats["qb_changed"] = _qb_changed(tg)
     return feats
 
@@ -181,10 +202,12 @@ def build_game_features(
     # Future games have no team-game row yet; add placeholders so they get pregame features.
     future = sched[~sched.game_id.isin(team_games.game_id)]
     placeholders = pd.concat([
-        pd.DataFrame({"game_id": future.game_id, "season": future.season, "gameday": future.gameday,
-                      "team": future.home_team, "rest": future.home_rest, "qb_id": future.home_qb_id}),
-        pd.DataFrame({"game_id": future.game_id, "season": future.season, "gameday": future.gameday,
-                      "team": future.away_team, "rest": future.away_rest, "qb_id": future.away_qb_id}),
+        pd.DataFrame({"game_id": future.game_id, "season": future.season, "week": future.week,
+                      "gameday": future.gameday, "team": future.home_team,
+                      "rest": future.home_rest, "qb_id": future.home_qb_id}),
+        pd.DataFrame({"game_id": future.game_id, "season": future.season, "week": future.week,
+                      "gameday": future.gameday, "team": future.away_team,
+                      "rest": future.away_rest, "qb_id": future.away_qb_id}),
     ])
     tg_all = pd.concat([team_games, placeholders], ignore_index=True)
     feats = build_team_features(tg_all, params)
@@ -219,6 +242,7 @@ FEATURE_COLUMNS = (
     [f"diff_{c}" for c in TEAM_STATS]
     + [f"diff_form_{c}" for c in FORM_STATS]
     + ["diff_qb_epa", "diff_qb_cpoe", "diff_qb_experience", "diff_qb_changed",
+       "diff_skill_missing", "diff_skill_missing_top",
        "diff_rest", "diff_elo", "home_field", "div_game"]
 )
 

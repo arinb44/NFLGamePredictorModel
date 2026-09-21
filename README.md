@@ -21,6 +21,7 @@ src/
   data_loader.py    downloads and caches nflverse data
   team_stats.py     play-by-play -> one row per team per game (EPA, success rate, turnovers...)
   elo.py            Elo ratings (feature + baseline)
+  players.py        skill-player (RB/WR/TE) role sizes and who is missing each game
   features.py       pregame rolling features, QB features, home-minus-away game table
   tune_features.py  tunes feature settings on 2012-2018 only
   evaluate.py       walk-forward evaluation, metrics, Elo/Vegas baselines
@@ -30,6 +31,7 @@ notebooks/
   01_data_exploration.ipynb
   02_features.ipynb
   03_logistic_regression.ipynb
+  04_player_availability.ipynb
 tests/
   test_leakage.py   proves features only use information from before kickoff
 data/               downloaded data (git-ignored)
@@ -64,6 +66,7 @@ lean on last year and later weeks on current form.
 | Results | points for/against, point differential, win % |
 | Recent form | short-memory point differential and EPA |
 | Quarterback | starting QB's EPA/play and CPOE (career history, shrunk toward a replacement-level prior), experience, QB change flag |
+| Skill players | share of the team's usual RB/WR/TE touches that is unavailable (injured, suspended, resting), and the biggest single absence |
 | Strength | Elo rating |
 | Situation | rest days, home-field advantage (trailing 3-season league home margin, 0 at neutral sites), divisional game |
 
@@ -79,11 +82,24 @@ Log loss is the main metric (lower is better) because the goal is accurate proba
 | Holdout 2019–2025 (1,954 games) | Accuracy | Log loss | Brier |
 |---|---|---|---|
 | Vegas moneyline (benchmark) | 0.664 | 0.6083 | 0.2105 |
-| **Logistic regression** | **0.647** | **0.6295** | **0.2199** |
+| **Logistic regression** | **0.656** | **0.6282** | **0.2191** |
+| Logistic regression without player features | 0.647 | 0.6295 | 0.2199 |
 | Elo | 0.638 | 0.6367 | 0.2227 |
 | Always pick home | 0.537 | 0.6929 | 0.2499 |
 
-The strongest factors are the starting QB's EPA/play, defensive explosive plays allowed, Elo, offensive success rate, and QB changes.
+The strongest factors are the starting QB's EPA/play, defensive explosive plays allowed, Elo, offensive success rate, QB changes, and missing skill players.
+
+### Skill-player availability
+
+Team stats already reflect the players who have been playing. What they miss is **who is out today**. For each game:
+
+1. **Role size:** each RB, WR and TE gets his share of the team's targets plus carries in earlier games.
+2. **Participation:** how regularly he has been playing. It fades while he is out, as the team's stats adjust without him.
+3. **Missing:** he is still on the roster but doesn't play.
+   - For past games, this means he didn't appear in that game's stats. Inactive lists are public 90 minutes before kickoff, so this is pregame information.
+   - For upcoming games, it comes from the injury report (Out or Doubtful) and roster status (IR).
+
+A first version valued players by EPA per game and gave no gain; role size is steadier. On the holdout, player features improve accuracy by 0.9 points, with the biggest gains in games with lopsided absences.
 
 ## Roadmap
 

@@ -21,7 +21,10 @@ URLS = {
     "pbp": f"{NFLVERSE_RELEASES}/pbp/play_by_play_{{season}}.parquet",
     "player_stats": f"{NFLVERSE_RELEASES}/stats_player/stats_player_week_{{season}}.parquet",
     "ngs": f"{NFLVERSE_RELEASES}/nextgen_stats/ngs_{{kind}}.parquet",
+    "rosters": f"{NFLVERSE_RELEASES}/weekly_rosters/roster_weekly_{{season}}.parquet",
+    "injuries": f"{NFLVERSE_RELEASES}/injuries/injuries_{{season}}.parquet",
 }
+INJURIES_FIRST_SEASON = 2009
 
 # Files for an in-progress season change weekly; re-download them if older than this.
 STALE_AFTER_HOURS = 12

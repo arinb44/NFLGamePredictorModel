@@ -29,6 +29,11 @@ GRID = {
     "qb_season_decay": [0.5, 0.7, 0.8, 0.9, 1.0],
     "qb_prior_plays": [50.0, 100.0, 150.0, 300.0, 500.0],
     "qb_prior_epa": [-0.15, -0.1, -0.05, 0.0],
+    "player_decay": [0.9, 0.95, 0.98],
+    "player_season_decay": [0.5, 0.7, 0.9],
+    "player_prior_games": [2.0, 4.0, 8.0],
+    "part_decay": [0.6, 0.7, 0.8, 0.9],
+    "part_season_decay": [0.3, 0.5, 0.7, 0.9, 1.0],
 }
 
 PARAMS_PATH = MODELS_DIR / "feature_params.json"
@@ -42,12 +47,16 @@ def score(team_games: pd.DataFrame, params: FeatureParams) -> float:
     return metrics(y, preds.p_home.to_numpy())["log_loss"]
 
 
-def tune(team_games: pd.DataFrame, passes: int = 2) -> FeatureParams:
-    best = FeatureParams()
+def tune(team_games: pd.DataFrame, passes: int = 2, only=None) -> FeatureParams:
+    """Start from the saved settings and improve them one setting at a time.
+    `only` limits the search to some setting names."""
+    best = load_params()
     best_score = score(team_games, best)
     print(f"start: {best_score:.5f}")
     for n in range(passes):
         for name, values in GRID.items():
+            if only and name not in only:
+                continue
             for v in values:
                 if v == getattr(best, name):
                     continue
@@ -67,8 +76,12 @@ def load_params() -> FeatureParams:
 
 if __name__ == "__main__":
     warnings.filterwarnings("ignore")
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--only", nargs="*", help="only tune these settings")
+    args = parser.parse_args()
     tg = pd.read_parquet(PROCESSED_DIR / "team_games.parquet")
-    best = tune(tg)
+    best = tune(tg, only=args.only)
     PARAMS_PATH.write_text(json.dumps(asdict(best), indent=2))
     print("best:", asdict(best))
     print(f"saved to {PARAMS_PATH}")

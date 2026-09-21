@@ -37,7 +37,19 @@ def test_features_ignore_future(team_games, full, cutoff, monkeypatch):
         s.loc[future, SCORE_COLS] = np.nan
         return s
 
+    real_players = features.load_player_inputs
+
+    def hidden_players():
+        # Player stats from the cutoff on are unknown; only *who played* on the
+        # cutoff day is known (inactive lists are public before kickoff).
+        log, rosters, outs = real_players()
+        day = log.game_id.map(team_games.drop_duplicates("game_id").set_index("game_id").gameday)
+        log = log[day <= cutoff].copy()
+        log.loc[day[day <= cutoff] == cutoff, "value"] = np.nan
+        return log, rosters, outs
+
     monkeypatch.setattr(features, "load_schedules", hidden_schedule)
+    monkeypatch.setattr(features, "load_player_inputs", hidden_players)
     truncated = build_game_features(team_games[team_games.gameday < cutoff])
 
     day = full[full.gameday == cutoff].set_index("game_id")[FEATURE_COLUMNS]
