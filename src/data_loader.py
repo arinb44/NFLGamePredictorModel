@@ -59,6 +59,13 @@ def load_schedules(refresh: bool = False) -> pd.DataFrame:
     return pd.read_parquet(dest)
 
 
+def load_teams(refresh: bool = False) -> pd.DataFrame:
+    """Team names, divisions, colors and logo URLs."""
+    dest = RAW_DIR / "teams.csv"
+    _download(URLS["teams"], dest, refresh)
+    return pd.read_csv(dest)
+
+
 def load_pbp(
     seasons: Iterable[int],
     columns: Optional[List[str]] = None,

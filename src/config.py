@@ -18,6 +18,7 @@ CURRENT_SEASON = 2026
 NFLVERSE_RELEASES = "https://github.com/nflverse/nflverse-data/releases/download"
 URLS = {
     "schedules": f"{NFLVERSE_RELEASES}/schedules/games.parquet",
+    "teams": f"{NFLVERSE_RELEASES}/teams/teams_colors_logos.csv",
     "pbp": f"{NFLVERSE_RELEASES}/pbp/play_by_play_{{season}}.parquet",
     "player_stats": f"{NFLVERSE_RELEASES}/stats_player/stats_player_week_{{season}}.parquet",
     "ngs": f"{NFLVERSE_RELEASES}/nextgen_stats/ngs_{{kind}}.parquet",

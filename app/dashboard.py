@@ -160,6 +160,66 @@ def load_model(version):
     return joblib.load(MODELS_DIR / "logistic.joblib")
 
 
+@st.cache_data
+def team_meta():
+    from src.data_loader import load_teams
+    t = load_teams().set_index("team_abbr")
+    return {k: {"name": r.team_name, "nick": r.team_nick, "logo": r.team_logo_espn} for k, r in t.iterrows()}
+
+
+@st.cache_data
+def kickoffs():
+    """game_id -> kickoff (US Eastern) from the schedule."""
+    from src.data_loader import load_schedules
+    s = load_schedules()[["game_id", "gameday", "gametime"]]
+    return dict(zip(s.game_id, pd.to_datetime(s.gameday + " " + s.gametime.fillna("13:00"))))
+
+
+def waterfall_chart(e, home, away, height=None):
+    """Horizontal waterfall from 50% to the model's home win probability."""
+    from src.explain import waterfall
+    w = waterfall(e).reset_index(drop=True)
+    w["order"] = range(len(w))
+    final = w.factor == "Model probability"
+    w["kind"] = np.where(final, "Model probability", np.where(w.delta >= 0, f"Pushes toward {home}", f"Pushes toward {away}"))
+    w["label"] = np.where(final, w.end.map(lambda v: f"{v:.1%}"), (w.delta * 100).map(lambda v: f"{v:+.1f}"))
+    w["lo"], w["hi"] = w[["start", "end"]].min(axis=1), w[["start", "end"]].max(axis=1)
+    lo = max(0.0, w.lo.min() - 0.06)
+    hi = min(1.0, w.hi.max() + 0.06)
+    y = alt.Y("factor:N", sort=alt.EncodingSortField("order"), title=None, axis=alt.Axis(labelLimit=220, labelOverlap=False))
+    x_scale = alt.Scale(domain=[lo, hi])
+    bars = alt.Chart(w).mark_bar(cornerRadius=3, height=18).encode(
+        y=y, x=alt.X("start:Q", title=f"{home} win probability", scale=x_scale, axis=alt.Axis(format="%")),
+        x2="end:Q",
+        color=alt.Color("kind:N", legend=alt.Legend(title=None),
+                        scale=alt.Scale(domain=[f"Pushes toward {home}", f"Pushes toward {away}", "Model probability"],
+                                        range=[BLUE, RED, "#52514e"])),
+        tooltip=["factor", alt.Tooltip("start:Q", format=".1%", title="from"),
+                 alt.Tooltip("end:Q", format=".1%", title="to"), "detail"])
+    labels = alt.Chart(w).mark_text(align="left", dx=5, fontSize=11, color=TEXT_2).encode(
+        y=y, x=alt.X("hi:Q", scale=x_scale), text="label:N")
+    even = alt.Chart(pd.DataFrame({"x": [0.5]})).mark_rule(color=GRAY, strokeDash=[4, 4]).encode(
+        x=alt.X("x:Q", scale=x_scale))
+    return style(even + bars + labels, height or 30 * len(w) + 50)
+
+
+def prob_bar(home, away, p_home, p_vegas=None):
+    """Two-segment win-probability bar (away left, home right) with a Vegas tick."""
+    a, h = (1 - p_home) * 100, p_home * 100
+    tick = ""
+    if p_vegas is not None and p_vegas == p_vegas:
+        tick = (f'<div title="Vegas" style="position:absolute;top:-4px;bottom:-4px;left:calc({(1 - p_vegas) * 100:.1f}% - 1.5px);'
+                f'width:3px;background:#0b0b0b;border-radius:2px"></div>')
+    seg = 'display:flex;align-items:center;white-space:nowrap;overflow:hidden'
+    left = f"{away} {a:.0f}%" if a >= 14 else ""
+    right = f"{home} {h:.0f}%" if h >= 14 else ""
+    return (f'<div style="position:relative;margin:6px 0 2px 0">'
+            f'<div style="display:flex;height:28px;border-radius:6px;overflow:hidden;font-size:13px;font-weight:600;color:#fff">'
+            f'<div style="width:{a:.1f}%;background:{ORANGE};{seg};padding-left:8px">{left}</div>'
+            f'<div style="width:{h:.1f}%;background:{BLUE};{seg};justify-content:flex-end;padding-right:8px">{right}</div>'
+            f'</div>{tick}</div>')
+
+
 games, oos, missing, results, team_games = load(tuple(f.stat().st_mtime if f.exists() else 0 for f in DATA_FILES))
 teams = team_long(games)
 played = games[games.home_win.notna()]
@@ -174,10 +234,147 @@ st.title("NFL Win Probability Model")
 st.caption("Pregame win probabilities from team efficiency, quarterbacks, player availability, "
            "travel, fatigue and weather. Data: nflverse, Open-Meteo.")
 
-page = st.sidebar.radio("Section", ["Overview", "Teams", "Games", "Players", "Situational", "Matchups", "Model"])
+page = st.sidebar.radio("Section", ["This Week", "Overview", "Teams", "Games", "Players", "Situational", "Matchups", "Model"])
+
+# ================================================================ This Week
+if page == "This Week":
+    from src.config import MODELS_DIR
+    from src.explain import explain
+    from src.evaluate import moneyline_prob
+    from src.matchups import bad_weather
+    meta = team_meta()
+    ko = kickoffs()
+    model_path = MODELS_DIR / "logistic.joblib"
+    bundle = load_model(model_path.stat().st_mtime)
+
+    cur = int(games.season.max())
+    wk_all = sorted(games[games.season == cur].week.unique())
+    upcoming_weeks = sorted(games[(games.season == cur) & games.home_score.isna()].week.unique())
+    f1, f2 = st.columns([1, 3])
+    week = f1.selectbox("Week", wk_all, index=wk_all.index(upcoming_weeks[0]) if upcoming_weeks else len(wk_all) - 1,
+                        format_func=lambda w: f"Week {w}" if w <= 18 else {19: "Wild Card", 20: "Divisional",
+                                                                           21: "Conference", 22: "Super Bowl"}.get(w, f"Week {w}"))
+    wg = games[(games.season == cur) & (games.week == week)].copy()
+    wg["kickoff"] = wg.game_id.map(ko)
+    wg = wg.sort_values(["kickoff", "game_id"]).reset_index(drop=True)
+    wg["p_vegas"] = moneyline_prob(wg.home_moneyline, wg.away_moneyline)
+
+    # Played games show the probability recorded before kickoff; upcoming games the current model.
+    live_p = bundle["model"].predict_proba(wg[bundle["features"]])[:, 1]
+    try:
+        from src.track import _load as load_tracking
+        tracked = load_tracking().set_index("game_id").p_logistic
+    except Exception:
+        tracked = pd.Series(dtype=float)
+    played_now = wg.home_score.notna()
+    wg["p_show"] = np.where(played_now, wg.game_id.map(tracked).fillna(pd.Series(live_p)), live_p)
+    exps = {e["game_id"]: e for e in explain(bundle, wg, missing, top=20)}
+
+    detail = st.session_state.get("detail_game")
+    if detail not in set(wg.game_id):
+        detail = None
+
+    def title_html(r, size=34):
+        a, h = meta.get(r.away_team, {}), meta.get(r.home_team, {})
+        img = lambda m: f'<img src="{m.get("logo", "")}" style="height:{size}px;vertical-align:middle">' if m else ""
+        return (f'<div style="display:flex;align-items:center;gap:10px;font-size:{17 if size < 40 else 24}px;font-weight:600">'
+                f'{img(a)}<span>{a.get("nick", r.away_team)}</span><span style="color:{GRAY};font-weight:400">at</span>'
+                f'{img(h)}<span>{h.get("nick", r.home_team)}</span></div>')
+
+    def badges(r):
+        out = []
+        if r.p_vegas == r.p_vegas and abs(r.p_show - r.p_vegas) >= 0.10:
+            out.append(("Model vs Vegas: {:.0f} pts".format(abs(r.p_show - r.p_vegas) * 100), ":material/compare_arrows:", "orange"))
+        wx = pd.DataFrame([{"wind_mph": r.wind_mph, "precip_mm": r.precip_mm, "temp_f": r.temp_f}])
+        if not r.indoor and bool(bad_weather(wx).iloc[0]):
+            txt = f"{r.temp_f:.0f}°F, {r.wind_mph:.0f} mph wind" + (", rain/snow" if r.precip_mm >= 1 else "")
+            out.append((txt, ":material/thunderstorm:", "blue"))
+        m = missing[missing.game_id == r.game_id] if missing is not None else pd.DataFrame()
+        for team in (r.away_team, r.home_team):
+            mt = m[m.team == team].sort_values("missing_value", ascending=False) if len(m) else m
+            if len(mt) and mt.missing_value.sum() >= 0.03:
+                out.append((f"{team} without {mt.iloc[0]['name']}", ":material/personal_injury:", "red"))
+        if r.neutral:
+            out.append(("Neutral site", ":material/public:", "gray"))
+        return out
+
+    if detail is None:
+        st.header(f"{cur} — " + (f"Week {week}" if week <= 18 else "Playoffs"))
+        n_up = int((~played_now).sum())
+        st.caption(f"{len(wg)} games · {n_up} still to play. Bars show the model's win probability "
+                   f"(orange = away, blue = home); the black tick is Vegas. Played games show the probability recorded "
+                   f"before kickoff.")
+        cols = st.columns(2)
+        for i, r in wg.iterrows():
+            e = exps[r.game_id]
+            with cols[i % 2].container(border=True):
+                st.markdown(title_html(r), unsafe_allow_html=True)
+                when = r.kickoff.strftime("%a %b %-d · %-I:%M %p ET") if pd.notna(r.kickoff) else ""
+                st.caption(f"{when}  ·  {r.away_qb_name} vs {r.home_qb_name}")
+                st.markdown(prob_bar(r.home_team, r.away_team, r.p_show, r.p_vegas), unsafe_allow_html=True)
+                vegas_txt = ""
+                if r.p_vegas == r.p_vegas:
+                    vfav, vp = (r.home_team, r.p_vegas) if r.p_vegas >= 0.5 else (r.away_team, 1 - r.p_vegas)
+                    vegas_txt = f"Vegas: {vfav} {vp:.0%}"
+                if played_now[i]:
+                    winner = r.home_team if r.home_score > r.away_score else r.away_team
+                    pick = r.home_team if r.p_show >= 0.5 else r.away_team
+                    mark = "✓" if winner == pick else "✗"
+                    st.caption(f"**Final: {r.away_team} {r.away_score:.0f} – {r.home_team} {r.home_score:.0f}** "
+                               f"(model picked {pick} {mark}) · {vegas_txt}")
+                else:
+                    st.caption(vegas_txt)
+                b = badges(r)
+                if b:
+                    st.markdown(" ".join(f":{c}-badge[{ic} {t}]" for t, ic, c in b))
+                reasons = "".join(
+                    f"<div style='font-size:13px;line-height:1.35;margin:3px 0'><b>{f['favors']} "
+                    f"+{abs(f['pct_points']) * 100:.1f}%</b> {f['factor']} "
+                    f"<span style='color:{TEXT_2}'>— {f['detail']}</span></div>" for f in e["factors"][:3])
+                st.markdown(f"<div style='margin:4px 0 8px 0'>{reasons}</div>", unsafe_allow_html=True)
+                if st.button("Full breakdown", key=f"open_{r.game_id}", icon=":material/insights:"):
+                    st.session_state["detail_game"] = r.game_id
+                    st.rerun()
+    else:
+        r = wg[wg.game_id == detail].iloc[0]
+        e = exps[detail]
+        if st.button("All games", icon=":material/arrow_back:"):
+            st.session_state.pop("detail_game", None)
+            st.rerun()
+        st.markdown(title_html(r, size=56), unsafe_allow_html=True)
+        when = r.kickoff.strftime("%A %B %-d · %-I:%M %p ET") if pd.notna(r.kickoff) else ""
+        st.caption(f"{when} · {r.away_qb_name} vs {r.home_qb_name}")
+        c1, c2, c3 = st.columns(3)
+        c1.metric(f"{r.away_team} win", f"{1 - r.p_show:.1%}")
+        c2.metric(f"{r.home_team} win", f"{r.p_show:.1%}")
+        if r.p_vegas == r.p_vegas:
+            c3.metric(f"Vegas: {r.home_team}", f"{r.p_vegas:.1%}", f"{(r.p_show - r.p_vegas) * 100:+.1f} pts model vs Vegas",
+                      delta_color="off")
+        st.markdown(prob_bar(r.home_team, r.away_team, r.p_show, r.p_vegas), unsafe_allow_html=True)
+        b = badges(r)
+        if b:
+            st.markdown(" ".join(f":{c}-badge[{ic} {t}]" for t, ic, c in b))
+        st.subheader("How the prediction is built")
+        st.caption(f"Starts at 50% (evenly matched teams at a neutral site). Each bar adds one factor, biggest first, "
+                   f"and the last bar is the model's probability for {r.home_team}. Hover a bar for the numbers behind it.")
+        if played_now.loc[r.name] and r.game_id in tracked.index:
+            st.caption("This game has been played: the breakdown uses the current model, so it may differ slightly "
+                       "from the probability recorded before kickoff.")
+        st.altair_chart(waterfall_chart(e, r.home_team, r.away_team), use_container_width=True)
+        f = pd.DataFrame(e["all_factors"])
+        f = f[f.pct_points.abs() >= 0.001]
+        f["effect"] = f.apply(lambda x: f"{x.favors} +{abs(x.pct_points) * 100:.1f}%", axis=1)
+        st.dataframe(f[["factor", "effect", "detail"]], hide_index=True, use_container_width=True)
+        m = missing[missing.game_id == detail] if missing is not None else pd.DataFrame()
+        if len(m):
+            st.markdown("**Missing skill players**")
+            st.dataframe(m.sort_values("missing_value", ascending=False)[["team", "name", "position", "value", "missing_value"]],
+                         hide_index=True, use_container_width=True,
+                         column_config={"value": st.column_config.NumberColumn("usual share of touches", format="percent"),
+                                        "missing_value": st.column_config.NumberColumn("missing share", format="percent")})
 
 # ================================================================ Overview
-if page == "Overview":
+elif page == "Overview":
     c = st.columns(4)
     c[0].metric("Games", f"{len(played):,}")
     c[1].metric("Seasons", f"{played.season.min()}–{str(played.season.max())[2:]}")
@@ -333,30 +530,13 @@ elif page == "Games":
         c2.metric(f"{r0.away_team} (away)", f"{1 - ph:.1%}")
         if r0.p_vegas == r0.p_vegas:
             c3.metric(f"Vegas: {r0.home_team}", f"{r0.p_vegas:.1%}")
-        st.caption("Starting point: two evenly matched teams = 50%. Each bar is how much "
-                   "the probability would move if that factor were even. Blue pushes toward the home team, red toward "
-                   "the away team. Hover for details.")
+        st.caption("Starts at 50% (evenly matched teams at a neutral site). Each bar adds one factor, biggest first; "
+                   "the last bar is the model's probability for the home team. Hover for details.")
+        st.altair_chart(waterfall_chart(e, r0.home_team, r0.away_team), use_container_width=True)
         f = pd.DataFrame(e["all_factors"])
         f = f[f.pct_points.abs() >= 0.001]
-        f["pts"] = f.pct_points * 100
-        f["direction"] = np.where(f.pts >= 0, f"Favors {r0.home_team}", f"Favors {r0.away_team}")
-        f["label"] = f.pts.map(lambda v: f"{v:+.1f}%")
-        bars = alt.Chart(f).mark_bar(cornerRadiusEnd=4).encode(
-            y=alt.Y("factor:N", sort=alt.EncodingSortField("pts", op="max", order="descending"), title=None,
-                    axis=alt.Axis(labelLimit=220, labelOverlap=False)),
-            x=alt.X("pts:Q", title="Percentage points",
-                    scale=alt.Scale(domain=[min(f.pts.min(), 0) - 2.5, max(f.pts.max(), 0) + 2.5])),
-            color=alt.Color("direction:N", legend=alt.Legend(title=None),
-                            scale=alt.Scale(domain=[f"Favors {r0.home_team}", f"Favors {r0.away_team}"],
-                                            range=[BLUE, RED])),
-            tooltip=["factor", alt.Tooltip("pts:Q", format="+.1f", title="points"), "detail"])
-        def labels(align, dx, cond):
-            return alt.Chart(f).transform_filter(cond).mark_text(
-                align=align, dx=dx, fontSize=11, color=TEXT_2).encode(
-                y=alt.Y("factor:N", sort=alt.EncodingSortField("pts", op="max", order="descending")),
-                x="pts:Q", text="label:N")
-        chart = bars + labels("left", 4, "datum.pts >= 0") + labels("right", -4, "datum.pts < 0")
-        st.altair_chart(style(chart, 28 * len(f) + 40), use_container_width=True)
+        f["label"] = (f.pct_points * 100).map(lambda v: f"{v:+.1f}%")
+        f["direction"] = np.where(f.pct_points >= 0, f"Favors {r0.home_team}", f"Favors {r0.away_team}")
         st.dataframe(f[["factor", "label", "direction", "detail"]].rename(columns={"label": "effect"}),
                      hide_index=True, use_container_width=True)
 

@@ -6,7 +6,7 @@ import pytest
 joblib = pytest.importorskip("joblib")
 
 from src.config import MODELS_DIR, PROCESSED_DIR
-from src.explain import GROUPS, decompose, explain, group_contributions
+from src.explain import GROUPS, decompose, explain, group_contributions, waterfall
 
 
 @pytest.fixture(scope="module")
@@ -44,6 +44,16 @@ def test_factors_start_from_even_and_reach_model_probability(setup):
     groups["Home field"] += base
     p = 1 / (1 + np.exp(-groups.sum(axis=1)))  # starts at log-odds 0 = 50%
     np.testing.assert_allclose(p, bundle["model"].predict_proba(games[bundle["features"]])[:, 1], atol=1e-10)
+
+
+def test_waterfall_ends_at_model_probability(setup):
+    bundle, games = setup
+    for e in explain(bundle, games.head(20)):
+        w = waterfall(e)
+        steps = w[w.factor != "Model probability"]
+        assert steps.start.iloc[0] == 0.5
+        np.testing.assert_allclose(steps.end.iloc[-1], e["p_home"], atol=1e-12)
+        np.testing.assert_allclose(0.5 + steps.delta.sum(), e["p_home"], atol=1e-12)
 
 
 def test_explain_runs(setup):

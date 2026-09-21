@@ -83,29 +83,30 @@ Example output (2026 week 3):
 KC @ MIA  (Sun Sep 27)
   MIA 35.8%  |  KC 64.2%   ->  KC favored at 64.2%   (Vegas: MIA 14.8%)
   Top factors:
-     KC + 7.2%  Quarterback            Malik Willis +0.04 vs Patrick Mahomes +0.18 EPA/play
-    MIA + 6.2%  Home field             MIA at home
-     KC + 5.7%  Defense                MIA +0.036 vs KC -0.017 EPA/play allowed (lower is better)
-     KC + 5.3%  Scoring & record       MIA -2.7 vs KC +1.5 point diff/game
+     KC + 7.5%  Quarterback            Malik Willis +0.04 vs Patrick Mahomes +0.18 EPA/play
+    MIA + 7.0%  Home field             MIA at home
+     KC + 6.0%  Defense                MIA +0.036 vs KC -0.017 EPA/play allowed (lower is better)
+    MIA + 5.9%  Fatigue                KC played OT last game (4 defensive OT snaps); defensive snaps/game, last 3: MIA 56 vs KC 54
 ```
 
 `--qb KC="Justin Fields"` shows how much the Mahomes-to-backup drop is worth.
 
-**How the explanation works:** the model is a sum, `log-odds = Σ weight × feature`, with no intercept. Every feature is a home-minus-away difference, so evenly matched teams at a neutral site start at exactly 50%, and each factor's push is exact. Related features, such as offensive EPA and success rate, are summed into groups (Quarterback, Offense, Defense, Missing skill players, Home field, Rest, Fatigue…) because the model's split of credit between overlapping features is arbitrary. Each group's number is how far the probability would move if that group were even. `tests/test_explain.py` checks that the factors add up exactly to the model's probability.
+**How the explanation works:** the model is a sum, `log-odds = Σ weight × feature`, with no intercept. Every feature is a home-minus-away difference, so evenly matched teams at a neutral site start at exactly 50%, and each factor's push is exact. Related features, such as offensive EPA and success rate, are summed into groups (Quarterback, Offense, Defense, Missing skill players, Home field, Rest, Fatigue…) because the model's split of credit between overlapping features is arbitrary. Each group's number is its step in a **waterfall**: start at 50%, add groups one at a time (largest first), and record how far each moves the probability. The steps add up exactly to the final probability. `tests/test_explain.py` checks that the factors add up exactly to the model's probability.
 
 **Upcoming games:**
 - If the schedule doesn't list a starter yet, each team is assumed to start its most recent QB.
 - Player absences come from the latest injury report and roster, and are applied to the next week only.
 - Weather comes from the forecast within 16 days, and from the venue's climate average beyond that.
 
-The dashboard's **Games** page shows the same breakdown as a chart for any game.
+The dashboard's **This Week** page shows the same breakdown as a waterfall chart for any game.
 
 ## Dashboard
 
-`streamlit run app/dashboard.py` opens an interactive dashboard with six sections:
+`streamlit run app/dashboard.py` opens an interactive dashboard:
 
 | Section | What it shows |
 |---|---|
+| This Week | Game cards for the upcoming week, with logos, kickoff, QBs, a win-probability bar with a Vegas marker, the top 3 reasons, and badges for model-vs-Vegas disagreements, bad weather and key absences. "Full breakdown" opens a waterfall chart from 50% to the model's probability. Played games show the probability recorded before kickoff |
 | Overview | Headline accuracy vs. Vegas and Elo; the decline of home-field advantage |
 | Teams | A team's pregame Elo, offensive/defensive EPA and QB rating over time, plus its game log with model and Vegas win probabilities |
 | Games | Every game in a week with out-of-sample model, Vegas and Elo probabilities; model-vs-Vegas scatter for a season |

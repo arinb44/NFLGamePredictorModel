@@ -12,9 +12,11 @@ explanations start at 50%. For a model with an intercept, `base` is folded into
 
 Related features (offensive EPA, success rate, points scored...) overlap, so
 the model's split of credit between them is arbitrary. Contributions are
-therefore summed into factor groups, which are stable and readable. Each
-group's effect in percentage points is how much the probability would move if
-that group were neutral.
+therefore summed into factor groups, which are stable and readable.
+
+Each group's effect in percentage points is its step in a waterfall: start at
+50%, add groups one at a time (largest first), and record how far each moves the
+probability. The steps add up exactly to the final probability.
 """
 from typing import Dict, List
 
@@ -127,8 +129,10 @@ def explain(bundle: dict, games: pd.DataFrame, missing: pd.DataFrame = None, top
     out = []
     for idx, row in games.iterrows():
         g = groups.loc[idx]
-        pp = _sigmoid(logit[idx]) - _sigmoid(logit[idx] - g)  # effect of each group, in probability
-        order = pp.abs().sort_values(ascending=False).index
+        order = g.abs().sort_values(ascending=False).index
+        # Waterfall steps: add groups largest first; each step's probability change.
+        cum = np.concatenate([[0.0], np.cumsum(g[order].to_numpy())])
+        pp = pd.Series(np.diff(_sigmoid(cum)), index=order)
         details = _details(row, missing)
         if row.neutral:
             details["Home field"] = details["Baseline"]
@@ -142,6 +146,30 @@ def explain(bundle: dict, games: pd.DataFrame, missing: pd.DataFrame = None, top
             "factors": factors[:top], "all_factors": factors,
         })
     return out
+
+
+def waterfall(e: dict, min_pts: float = 0.5) -> pd.DataFrame:
+    """Steps from 50% to the model's home win probability, largest factor first.
+
+    Each factor's log-odds contribution is added in turn and converted to a
+    probability, so the steps add up exactly to the final probability. Factors
+    smaller than `min_pts` percentage points are combined into "Other factors".
+    """
+    factors = sorted(e["all_factors"], key=lambda f: -abs(f["logit"]))
+    big = [f for f in factors if abs(f["pct_points"]) * 100 >= min_pts]
+    small = [f for f in factors if abs(f["pct_points"]) * 100 < min_pts]
+    if small:
+        big.append({"factor": "Other factors", "logit": sum(f["logit"] for f in small),
+                    "detail": ", ".join(f["factor"] for f in small)})
+    rows, z = [], 0.0
+    for f in big:
+        start, end = float(_sigmoid(z)), float(_sigmoid(z + f["logit"]))
+        rows.append({"factor": f["factor"], "start": start, "end": end, "delta": end - start,
+                     "detail": f.get("detail", "")})
+        z += f["logit"]
+    rows.append({"factor": "Model probability", "start": 0.5, "end": float(_sigmoid(z)),
+                 "delta": float(_sigmoid(z)) - 0.5, "detail": ""})
+    return pd.DataFrame(rows)
 
 
 def format_explanation(e: dict, vegas_p: float = None) -> str:
