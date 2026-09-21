@@ -97,8 +97,13 @@ def bar_chart(df, x, y, tooltip, color=BLUE, horizontal=False, y_title=None, x_t
 
 
 # ---------------------------------------------------------------- data
+DATA_FILES = [PROCESSED_DIR / "games_features.parquet", PROCESSED_DIR / "oos_predictions.parquet",
+              PROCESSED_DIR / "missing_players.parquet", ROOT / "reports" / "results.json"]
+
+
 @st.cache_data
-def load():
+def load(versions):
+    """Cached; `versions` (file modification times) makes the cache refresh after a pipeline rerun."""
     games = pd.read_parquet(PROCESSED_DIR / "games_features.parquet")
     oos_path = PROCESSED_DIR / "oos_predictions.parquet"
     oos = pd.read_parquet(oos_path) if oos_path.exists() else None
@@ -130,7 +135,7 @@ def team_long(games: pd.DataFrame) -> pd.DataFrame:
     return t
 
 
-games, oos, missing, results = load()
+games, oos, missing, results = load(tuple(f.stat().st_mtime if f.exists() else 0 for f in DATA_FILES))
 teams = team_long(games)
 played = games[games.home_win.notna()]
 
@@ -176,21 +181,29 @@ if page == "Overview":
         st.caption("Walk-forward: every season is predicted by a model trained only on earlier seasons. "
                    "Holdout seasons were never used to make any modeling choice.")
         r = results.rename(columns={"index": "model"})
-        r["model"] = r.model.map({"logistic": "Model", "vegas": "Vegas", "elo": "Elo"})
+        names = {"logistic": "Model", "vegas": "Vegas", "elo": "Elo",
+                 "random_forest": "Random forest", "gradient_boosting": "Gradient boosting"}
+        r["model"] = r.model.map(names)
+        order = ["Model", "Random forest", "Gradient boosting", "Vegas", "Elo"]
+        st.caption("**Model** is the final logistic regression. Random forest and gradient boosting "
+                   "(gray) were tuned the same way but did worse on the tuning seasons.")
         r["period"] = r.period.str.replace("holdout", "Holdout").str.replace("tuning", "Tuning")
-        col1, col2 = st.columns(2)
-        for col, metric, title, fmt in [(col1, "accuracy", "Accuracy (higher is better)", ".1%"),
-                                        (col2, "log_loss", "Log loss (lower is better)", ".3f")]:
+        for metric, title, fmt in [("accuracy", "Accuracy (higher is better)", ".1%"),
+                                   ("log_loss", "Log loss (lower is better)", ".3f")]:
             base = alt.Chart(r).encode(
                 x=alt.X(f"{metric}:Q", title=title, scale=alt.Scale(zero=False, nice=True, padding=40)),
                 y=alt.Y("period:N", title=None, sort="descending"),
-                yOffset=alt.YOffset("model:N", sort=["Model", "Vegas", "Elo"]),
-                color=alt.Color("model:N", scale=MODEL_COLORS, legend=alt.Legend(title=None)),
+                yOffset=alt.YOffset("model:N", sort=order),
+                color=alt.Color("model:N", legend=alt.Legend(title=None, labelLimit=200),
+                                scale=alt.Scale(domain=order, range=[BLUE, GRAY, GRAY, ORANGE, AQUA])),
+                shape=alt.Shape("model:N", legend=alt.Legend(title=None, labelLimit=200),
+                                scale=alt.Scale(domain=order, range=["circle", "square", "triangle-up",
+                                                                     "circle", "circle"])),
                 tooltip=["period", "model", alt.Tooltip(f"{metric}:Q", format=fmt), "games"])
             dots = base.mark_point(size=140, filled=True, opacity=1)
             labels = base.mark_text(dx=12, align="left", fontSize=11).encode(
                 text=alt.Text(f"{metric}:Q", format=fmt), color=alt.value(TEXT_2))
-            col.altair_chart(style(dots + labels, 240), use_container_width=True)
+            st.altair_chart(style(dots + labels, 300), use_container_width=True)
 
 # ================================================================ Teams
 elif page == "Teams":

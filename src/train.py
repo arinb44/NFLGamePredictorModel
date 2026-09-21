@@ -12,22 +12,36 @@ import pandas as pd
 
 from src.config import MODELS_DIR, PROCESSED_DIR, ROOT
 from src.evaluate import baseline_predictions, compare, load_played_games, walk_forward
-from src.features import FEATURE_COLUMNS
-from src.models import logistic
+from src.features import ALL_FEATURES, FEATURE_COLUMNS
+from src.models import gradient_boosting, logistic, random_forest
 from src.tune_features import load_params
+from src.tune_models import load_model_params
 
 TUNING = range(2012, 2019)
 HOLDOUT = range(2019, 2026)
 
+_MP = load_model_params()
+
+
+def _tree(name, factory):
+    cfg = _MP.get(name, {"features": "all_features", "params": {}})
+    cols = ALL_FEATURES if cfg["features"] == "all_features" else FEATURE_COLUMNS
+    return (lambda: factory(**cfg["params"])), cols
+
+
+# name -> (factory, feature list). Settings were all chosen on the tuning seasons.
 MODELS = {
-    "logistic": lambda: logistic(C=0.003),  # C chosen on the tuning seasons
+    "logistic": (lambda: logistic(C=0.003), FEATURE_COLUMNS),
+    "random_forest": _tree("rf", random_forest),
+    "gradient_boosting": _tree("gbm", gradient_boosting),
 }
+FINAL_MODEL = "logistic"  # best log loss on the tuning seasons
 
 
 def evaluate(games: pd.DataFrame, names) -> pd.DataFrame:
     tables = []
     for label, seasons in (("tuning 2012-18", TUNING), ("holdout 2019-25", HOLDOUT)):
-        preds = {n: walk_forward(games, MODELS[n], FEATURE_COLUMNS, seasons) for n in names}
+        preds = {n: walk_forward(games, MODELS[n][0], MODELS[n][1], seasons) for n in names}
         t = compare(games, preds)
         t.insert(0, "period", label)
         tables.append(t)
@@ -35,12 +49,13 @@ def evaluate(games: pd.DataFrame, names) -> pd.DataFrame:
 
 
 def fit_final(games: pd.DataFrame, name: str):
-    model = MODELS[name]()
-    model.fit(games[FEATURE_COLUMNS], games.home_win)
+    factory, cols = MODELS[name]
+    model = factory()
+    model.fit(games[cols], games.home_win)
     path = MODELS_DIR / f"{name}.joblib"
     joblib.dump({
         "model": model,
-        "features": FEATURE_COLUMNS,
+        "features": cols,
         "feature_params": load_params(),
         "trained_through": str(games.gameday.max().date()),
     }, path)
@@ -58,7 +73,7 @@ if __name__ == "__main__":
     warnings.filterwarnings("ignore")
     parser = argparse.ArgumentParser()
     parser.add_argument("--models", nargs="+", default=list(MODELS))
-    parser.add_argument("--final", default="logistic", help="model to fit on all data and save")
+    parser.add_argument("--final", default=FINAL_MODEL, help="model to fit on all data and save")
     args = parser.parse_args()
 
     games = load_played_games()
@@ -68,7 +83,7 @@ if __name__ == "__main__":
 
     # Out-of-sample predictions (each season predicted by a model trained only on
     # earlier seasons) - used by the dashboard.
-    oos = walk_forward(games, MODELS[args.final], FEATURE_COLUMNS, range(TUNING.start, HOLDOUT.stop))
+    oos = walk_forward(games, *MODELS[args.final], range(TUNING.start, HOLDOUT.stop))
     oos = oos.merge(baseline_predictions(games), on="game_id")
     oos.to_parquet(PROCESSED_DIR / "oos_predictions.parquet", index=False)
 

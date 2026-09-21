@@ -28,13 +28,15 @@ src/
   features.py       pregame rolling features, QB features, home-minus-away game table
   tune_features.py  tunes feature settings on 2012-2018 only
   evaluate.py       walk-forward evaluation, metrics, Elo/Vegas baselines
-  models.py         model definitions
+  models.py         model definitions (logistic regression, random forest, gradient boosting, ensemble)
+  tune_models.py    tunes tree-model settings on 2012-2018 only
   train.py          evaluates models, fits the final model, saves it to models/
 notebooks/
   01_data_exploration.ipynb
   02_features.ipynb
   03_logistic_regression.ipynb
   04_player_availability.ipynb
+  05_tree_models.ipynb
 app/
   dashboard.py      interactive dashboard (streamlit run app/dashboard.py)
 tests/
@@ -56,6 +58,7 @@ python -m src.features           # builds data/processed/games_features.parquet
                                  # (first run also downloads weather, ~15 min)
 python -m pytest tests           # leakage checks
 python -m src.tune_features      # optional: re-tune feature settings (~1 min)
+python -m src.tune_models        # optional: re-tune tree models (~7 min)
 python -m src.train              # walk-forward evaluation + save final model
 streamlit run app/dashboard.py   # open the dashboard at http://localhost:8501
 ```
@@ -107,12 +110,28 @@ Log loss is the main metric (lower is better) because the goal is accurate proba
 | Holdout 2019–2025 (1,954 games) | Accuracy | Log loss | Brier |
 |---|---|---|---|
 | Vegas moneyline (benchmark) | 0.664 | 0.6083 | 0.2105 |
-| **Logistic regression** | **0.656** | **0.6282** | **0.2191** |
-| Logistic regression without player features | 0.647 | 0.6295 | 0.2199 |
+| **Logistic regression (final)** | **0.653** | **0.6285** | **0.2192** |
+| Random forest | 0.644 | 0.6294 | 0.2198 |
+| Gradient boosting | 0.647 | 0.6295 | 0.2200 |
 | Elo | 0.638 | 0.6367 | 0.2227 |
 | Always pick home | 0.537 | 0.6929 | 0.2499 |
 
 The strongest factors are the starting QB's EPA/play, defensive explosive plays allowed, Elo, offensive success rate, QB changes, and missing skill players.
+
+### Model choice: why logistic regression
+
+Random forest and gradient boosting were tuned on the tuning seasons with all features, including travel and weather.
+
+| Tuning 2012–2018 | Log loss |
+|---|---|
+| **Logistic regression** | **0.6156** |
+| Random forest (tuned) | 0.6214 |
+| Gradient boosting (tuned) | 0.6221 |
+| 70% logistic + 30% random forest | 0.6162 |
+
+- **The best boosting setup is its simplest one:** 3-leaf trees, few of them, and large leaves. More flexible setups do worse, so the signal is mostly linear.
+- **Blending doesn't help.** Tree predictions correlate 0.94–0.97 with the logistic regression's, so they add noise rather than new information.
+- **The logistic regression is also the easiest model to explain,** since each factor's contribution can be read directly from its weight.
 
 ### Skill-player availability
 
@@ -150,5 +169,5 @@ Each group was added separately and kept only if it improved log loss on the tun
 - [x] Baselines and logistic regression
 - [x] Skill-player availability; travel, weather and fatigue features
 - [x] Interactive dashboard
-- [ ] Random forest and gradient boosting, plus calibration
+- [x] Random forest and gradient boosting, plus calibration and ensembles (logistic regression kept)
 - [ ] Per-game factor explanations and prediction CLI

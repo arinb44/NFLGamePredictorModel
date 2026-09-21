@@ -1,0 +1,20 @@
+{
+  "gbm": {
+    "features": "all_features",
+    "log_loss": 0.6220592699943303,
+    "params": {
+      "learning_rate": 0.03,
+      "max_iter": 150,
+      "max_leaf_nodes": 3,
+      "min_samples_leaf": 80
+    }
+  },
+  "rf": {
+    "features": "all_features",
+    "log_loss": 0.6213615755811442,
+    "params": {
+      "min_samples_leaf": 50,
+      "max_features": 0.2
+    }
+  }
+}

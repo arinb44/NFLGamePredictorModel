@@ -16,6 +16,22 @@
     "games":1861
   },
   {
+    "index":"random_forest",
+    "period":"tuning 2012-18",
+    "accuracy":0.6571735626,
+    "log_loss":0.6215791083,
+    "brier":0.2161987867,
+    "games":1861
+  },
+  {
+    "index":"gradient_boosting",
+    "period":"tuning 2012-18",
+    "accuracy":0.6636217088,
+    "log_loss":0.6222494606,
+    "brier":0.2165041927,
+    "games":1861
+  },
+  {
     "index":"elo",
     "period":"tuning 2012-18",
     "accuracy":0.6550241805,
@@ -37,6 +53,22 @@
     "accuracy":0.6530194473,
     "log_loss":0.628534793,
     "brier":0.2192318854,
+    "games":1954
+  },
+  {
+    "index":"random_forest",
+    "period":"holdout 2019-25",
+    "accuracy":0.6438075742,
+    "log_loss":0.6293726783,
+    "brier":0.2197705037,
+    "games":1954
+  },
+  {
+    "index":"gradient_boosting",
+    "period":"holdout 2019-25",
+    "accuracy":0.6468781986,
+    "log_loss":0.6294823433,
+    "brier":0.2200065188,
     "games":1954
   },
   {
