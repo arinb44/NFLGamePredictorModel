@@ -19,8 +19,14 @@ Built with Python, pandas and scikit-learn on [nflverse](https://github.com/nflv
 src/
   config.py         paths and constants
   data_loader.py    downloads and caches nflverse data
+  team_stats.py     play-by-play -> one row per team per game (EPA, success rate, turnovers...)
+  elo.py            Elo ratings (feature + baseline)
+  features.py       pregame rolling features, QB features, home-minus-away game table
 notebooks/
   01_data_exploration.ipynb
+  02_features.ipynb
+tests/
+  test_leakage.py   proves features only use information from before kickoff
 data/               downloaded data (git-ignored)
 models/             trained models (git-ignored)
 ```
@@ -32,13 +38,40 @@ python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 python -m src.data_loader        # downloads ~390 MB of data (2006 to present)
+python -m src.team_stats         # builds data/processed/team_games.parquet
+python -m src.features           # builds data/processed/games_features.parquet
+python -m pytest tests           # leakage checks
 ```
+
+## Features
+
+Every team stat is an exponentially weighted average of the team's earlier games this season,
+blended with last season's value (regressed toward the league average). That way week 1 predictions
+lean on last year and later weeks on current form.
+
+| Group | Features (home minus away) |
+|---|---|
+| Offense | EPA/play, neutral-situation EPA, success rate, pass EPA/dropback, rush EPA, explosive rate, sack rate, turnovers, red-zone TD rate, pass rate |
+| Defense | the same stats allowed |
+| Results | points for/against, point differential, win % |
+| Recent form | short-memory point differential and EPA |
+| Quarterback | starting QB's EPA/play and CPOE (career history, shrunk toward a replacement-level prior), experience, QB change flag |
+| Strength | Elo rating |
+| Situation | rest days, home-field advantage (trailing 3-season league home margin, 0 at neutral sites), divisional game |
+
+## Baselines (2007–2025, all games)
+
+| Model | Accuracy | Log loss | Brier |
+|---|---|---|---|
+| Always pick home | 0.558 | 0.6864 | 0.2466 |
+| Elo | 0.647 | 0.6288 | 0.2196 |
+| Vegas moneyline | 0.667 | 0.6071 | 0.2100 |
 
 ## Roadmap
 
 - [x] Data loader and exploration
-- [ ] Team-game stats from play-by-play
-- [ ] Pregame rolling features, QB features, Elo
+- [x] Team-game stats from play-by-play
+- [x] Pregame rolling features, QB features, Elo, leakage tests
 - [ ] Baselines and logistic regression
 - [ ] Random forest and gradient boosting, plus calibration
 - [ ] Per-game factor explanations and prediction CLI
