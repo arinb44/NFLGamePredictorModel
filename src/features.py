@@ -23,7 +23,7 @@ from src.config import CURRENT_SEASON, FIRST_SEASON, PROCESSED_DIR
 from src.data_loader import load_player_stats, load_schedules
 from src.elo import compute_elo
 from src.players import load_report_outs, load_roster_status, load_skill_log, skill_availability
-from src.matchups import blitz_vulnerability, load_dropbacks, qb_weather_sensitivity
+from src.matchups import blitz_vulnerability, load_dropbacks, qb_split_sensitivity, qb_weather_sensitivity
 from src.situational import load_game_weather, situational_features
 from src.venues import game_venues
 from src.team_stats import normalize_teams
@@ -51,6 +51,8 @@ class FeatureParams:
     part_season_decay: float = 0.5    # participation carried into a new season
     qb_weather_k: float = 400.0       # dropbacks of shrinkage for QB bad-weather sensitivity
     blitz_k: float = 300.0            # dropbacks of shrinkage for blitz vulnerability
+    clutch_k: float = 1000.0          # dropbacks of shrinkage for QB clutch (late & close) performance
+    prime_k: float = 1000.0           # dropbacks of shrinkage for QB prime-time performance
 
 
 TEAM_STATS = [
@@ -301,6 +303,10 @@ def build_game_features(
         on=["game_id", "team"], how="left")
     m = pd.concat([qb_weather_sensitivity(m_rows, drops, weather, indoor, params.qb_weather_k),
                    blitz_vulnerability(m_rows, drops, params.blitz_k)], axis=1)
+    prime_games = set(sched.loc[sched.gametime.fillna("13:00") >= "19:00", "game_id"])
+    m["qb_clutch"] = qb_split_sensitivity(m_rows, drops, drops.clutch, params.clutch_k)
+    m["qb_prime_sens"] = qb_split_sensitivity(m_rows, drops, drops.game_id.isin(prime_games), params.prime_k)
+    m["qb_prime_adj"] = m.qb_prime_sens * m_rows.game_id.isin(prime_games).to_numpy()
     feats = pd.concat([feats, m.set_index(feats.index)], axis=1)
 
     feat_cols = [c for c in feats.columns if c not in ("game_id", "team", "season", "gameday")]
@@ -374,7 +380,11 @@ BASE_FEATURES = (
 # The logistic regression uses base + fatigue: travel and weather did not improve
 # log loss on the tuning seasons. All groups stay available to the tree models,
 # which can pick up interactions (e.g. a warm-weather team in the cold).
-MATCHUP_FEATURES = ["diff_qb_weather_adj", "diff_exp_pressure", "diff_blitz_matchup"]
+MATCHUP_FEATURES = ["diff_qb_weather_adj", "diff_exp_pressure", "diff_blitz_matchup", "diff_qb_clutch",
+                    "diff_qb_prime_adj"]
+# QB clutch (late & close) and prime-time ratings were tested on the tuning seasons:
+# clutch changed log loss by -0.00007 (noise) and prime time made it worse, so both
+# are informational only (dashboard), not model features.
 # QB weather sensitivity improved the tuning seasons (0.6148 vs 0.6154; holdout was
 # slightly worse, 0.6283 vs 0.6278, within noise); expected
 # pressure did not (the sack-rate features already cover it); blitz data starts in

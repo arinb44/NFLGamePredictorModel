@@ -120,6 +120,25 @@ def load(versions):
 
 
 @st.cache_data
+def prime_time_records():
+    """Each QB's prime-time record vs the wins the model expected (out-of-sample, 2012+)."""
+    from src.data_loader import load_schedules
+    s = load_schedules()
+    s = s[(s.season >= 2012) & s.home_score.notna() & (s.gametime.fillna("13:00") >= "19:00")]
+    oos_path = PROCESSED_DIR / "oos_predictions.parquet"
+    if not oos_path.exists():
+        return pd.DataFrame()
+    s = s.merge(pd.read_parquet(oos_path)[["game_id", "p_home"]], on="game_id")
+    t = pd.concat([s.assign(qb=s.home_qb_name, win=(s.home_score > s.away_score) * 1.0, p=s.p_home),
+                   s.assign(qb=s.away_qb_name, win=(s.away_score > s.home_score) * 1.0, p=1 - s.p_home)])
+    r = t.groupby("qb").agg(W=("win", "sum"), G=("win", "size"), expected=("p", "sum")).reset_index()
+    r = r[r.G >= 5]
+    r["record"] = r.W.astype(int).astype(str) + "-" + (r.G - r.W).astype(int).astype(str)
+    r["vs_expected"] = r.W - r.expected
+    return r[["qb", "record", "expected", "vs_expected"]]
+
+
+@st.cache_data
 def load_blitz():
     """Per team-game blitzed / not-blitzed dropbacks and EPA (FTN charting, 2022+)."""
     from src.config import CURRENT_SEASON, FTN_FIRST_SEASON
@@ -688,7 +707,8 @@ elif page == "Matchups":
     st.caption("EPA per dropback in bad weather (15+ mph wind, rain/snow, or 32°F or colder) compared with the same QB's "
                "normal games, beyond the league-wide drop. Shrunk toward 0 until a QB has ~2,500 bad-weather dropbacks, "
                "so short careers sit near 0. Values are what the model used for each QB's latest start.")
-    qb_cols = ["season", "gameday", "qb", "team", "qb_weather_sens"]
+    qb_cols = ["season", "gameday", "qb", "team", "qb_weather_sens"] + \
+        [c for c in ("qb_clutch", "qb_prime_sens") if c in teams.columns]
     qbs = teams[qb_cols].dropna(subset=["qb"])
     seasons_qb = sorted(qbs.season.unique(), reverse=True)
     c1, c2 = st.columns([1, 2])
@@ -706,6 +726,29 @@ elif page == "Matchups":
         color_enc=alt.Color("direction:N", legend=alt.Legend(title=None),
                             scale=alt.Scale(domain=["Better in bad weather", "Worse in bad weather"],
                                             range=[BLUE, RED]))), use_container_width=True)
+
+    # ---- Prime time & clutch (informational)
+    st.subheader("QBs in prime time and in the clutch")
+    st.caption("**Not used by the model.** Prime-time edges don't carry over from one set of seasons to the next "
+               "(correlation −0.09), and clutch edges carry over only a little (+0.28), too little to improve "
+               "predictions. Records are shown against the wins the model expected, because night games are often "
+               "against strong opponents. Prime time = kickoff 7 PM ET or later; clutch = 4th quarter or OT within one score.")
+    pt = prime_time_records()
+    if len(pt):
+        qb_pick = st.multiselect("QBs", sorted(pt.qb.unique()),
+                                 default=[q for q in ["Patrick Mahomes", "Daniel Jones", "Josh Allen", "Jalen Hurts",
+                                                      "Lamar Jackson", "Joe Burrow"] if q in set(pt.qb)])
+        latest_r = qbs.sort_values("gameday").groupby("qb").tail(1).set_index("qb")
+        show = pt[pt.qb.isin(qb_pick)].set_index("qb")
+        show = show.join(latest_r[["qb_prime_sens", "qb_clutch"]] if "qb_clutch" in latest_r else pd.DataFrame())
+        st.dataframe(show.reset_index(), hide_index=True, use_container_width=True,
+                     column_config={"qb": "QB", "record": "prime-time record",
+                                    "expected": st.column_config.NumberColumn("expected wins", format="%.1f"),
+                                    "vs_expected": st.column_config.NumberColumn("wins vs expected", format="%+.1f"),
+                                    "qb_prime_sens": st.column_config.NumberColumn("prime-time EPA edge", format="%+.3f"),
+                                    "qb_clutch": st.column_config.NumberColumn("clutch EPA edge", format="%+.3f")})
+        st.caption("EPA edges are per dropback vs. a typical QB, shrunk toward 0 for small samples. "
+                   "Expected wins use the model's pregame probabilities (2012 onward).")
 
     # ---- Pressure map
     st.subheader("Pressure: protection vs. pass rush")

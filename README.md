@@ -199,12 +199,20 @@ Random forest and gradient boosting were tuned on the tuning seasons with all fe
 | QB bad-weather sensitivity | play-by-play + weather, 2006+ | 0.6154 → **0.6148** | 0.6278 → 0.6283 | In the model (chosen on tuning; within noise on holdout) |
 | Pass protection vs. pass rush | QB hits + sacks, 2006+ | 0.6154 → 0.6159 | – | Not used: sack-rate features already capture it |
 | Blitz vulnerability | FTN charting, 2022+ | can't test (no data) | 2023–25 only: 0.6246 → 0.6227 | Held out: its only evidence is from holdout seasons |
+| QB clutch (4th quarter/OT, within one score) | play-by-play, 2006+ | 0.61439 → 0.61432 | – | Not used: the gain is noise-sized |
+| QB prime time (7 PM ET or later) | schedule + play-by-play | 0.61439 → 0.61450 (worse) | – | Not used |
 
 - **QB bad-weather sensitivity** is shrunk hard: a QB needs about 2,500 bad-weather dropbacks before his own record counts fully.
   - Most weather-sensitive entering 2026: Brock Purdy and Baker Mayfield.
   - Least sensitive: Drake Maye.
   - Jalen Hurts is about average. His completion % drops in bad weather, but his EPA doesn't drop more than other QBs'.
 - **Pressure:** the Chargers were the 4th-most pressured offense in 2025, allowing a hit or sack on 20% of dropbacks. But they are among the *best* offenses when blitzed. Their protection problem is losing one-on-one, not the blitz.
+- **Clutch and prime time:** win-loss records exaggerate both.
+  - Daniel Jones is 1–17 in prime time, but the model's pregame odds expected about 5.5 wins, so most of that record comes from being a big underdog.
+  - Patrick Mahomes is 33–13 in prime time, not undefeated, and wins a slightly lower share at night than in other games.
+  - Split the seasons in half, and a QB's prime-time edge in one half doesn't predict the other (correlation −0.09), so it's mostly luck.
+  - Late-and-close edges carry over a little (+0.28), but too little to improve predictions.
+  - Both are shown on the dashboard's Matchups page for information only.
 - **Blitz vulnerability** shows the largest gain of anything tested so far. Because that evidence comes from holdout seasons, it is being tested live on the 2026 season (below).
 
 ### Live 2026 test: blitz vulnerability

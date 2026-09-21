@@ -11,6 +11,11 @@ Pass protection vs. pass rush
     pressure for an offense = its pressure rate allowed x the opponent's pressure
     rate generated / league average, both as pregame rolling averages.
 
+QB clutch and prime-time performance
+    Same shrunk "excess over the league" approach, for (a) late-and-close plays
+    (4th quarter or overtime, within one score) and (b) night games (7 PM ET or
+    later). Clutch applies to every game; prime time only to night games.
+
 Blitz vulnerability (FTN charting, 2022+)
     An offense's EPA/dropback when blitzed minus when not, beyond the league gap,
     shrunk toward 0, times the opponent's blitz rate. Zero before data exists.
@@ -34,13 +39,15 @@ def bad_weather(weather: pd.DataFrame) -> pd.Series:
 def load_dropbacks(seasons=range(FIRST_SEASON, CURRENT_SEASON + 1)) -> pd.DataFrame:
     """One row per QB dropback: game, offense, QB, EPA, and (2022+) blitzers."""
     from src.data_loader import load_ftn, load_pbp
-    cols = ["game_id", "play_id", "posteam", "qb_dropback", "epa", "passer_player_id", "rusher_player_id"]
+    cols = ["game_id", "play_id", "posteam", "qb_dropback", "epa", "passer_player_id", "rusher_player_id",
+            "qtr", "score_differential"]
     frames = []
     for s in seasons:
         p = load_pbp([s], columns=cols)
         p = p[(p.qb_dropback == 1) & p.epa.notna() & p.posteam.notna()]
         p = p.assign(qb_id=p.passer_player_id.fillna(p.rusher_player_id))
-        frames.append(p[["game_id", "play_id", "posteam", "qb_id", "epa"]])
+        p = p.assign(clutch=(p.qtr >= 4) & (p.score_differential.abs() <= 8))
+        frames.append(p[["game_id", "play_id", "posteam", "qb_id", "epa", "clutch"]])
     db = pd.concat(frames, ignore_index=True)
     ftn = load_ftn(range(FTN_FIRST_SEASON, CURRENT_SEASON + 1))[["nflverse_game_id", "nflverse_play_id", "n_blitzers"]]
     ftn = ftn.rename(columns={"nflverse_game_id": "game_id", "nflverse_play_id": "play_id"})
@@ -93,6 +100,23 @@ def qb_weather_sensitivity(tg: pd.DataFrame, dropbacks: pd.DataFrame, weather: p
             excess = (sb / nb - sg / ng) - league.get(season, 0.0)
             sens[i] = excess * nb / (nb + k)
     return pd.DataFrame({"qb_weather_sens": sens, "qb_weather_adj": sens * bad_now}, index=tg.index)
+
+
+def qb_split_sensitivity(tg: pd.DataFrame, dropbacks: pd.DataFrame, flag: pd.Series, k: float) -> np.ndarray:
+    """Shrunk excess EPA/dropback of each row's QB on flagged dropbacks vs his others,
+    beyond the league gap, using only games before each row's date."""
+    d = dropbacks.assign(f=flag.to_numpy())
+    d = d.assign(n_a=d.f.astype(int), s_a=np.where(d.f, d.epa, 0.0), n_b=(~d.f).astype(int), s_b=np.where(d.f, 0.0, d.epa))
+    g = d.groupby(["game_id", "qb_id"])[["n_a", "s_a", "n_b", "s_b"]].sum().reset_index()
+    g = g.merge(tg[["game_id", "season", "gameday"]].drop_duplicates("game_id"), on="game_id")
+    hist = _History(g, "qb_id", ["n_a", "s_a", "n_b", "s_b"])
+    league = _league_gap_by_season(g, "n_a", "s_a", "n_b", "s_b")
+    out = np.zeros(len(tg))
+    for i, (qb, day, season) in enumerate(zip(tg.qb_id, tg.gameday, tg.season)):
+        na, sa, nb, sb = hist.before(qb, day)
+        if na > 0 and nb > 0:
+            out[i] = ((sa / na - sb / nb) - league.get(season, 0.0)) * na / (na + k)
+    return out
 
 
 def blitz_vulnerability(tg: pd.DataFrame, dropbacks: pd.DataFrame, k: float = 300.0) -> pd.DataFrame:
