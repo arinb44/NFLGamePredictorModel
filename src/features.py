@@ -6,13 +6,15 @@ Leakage rule: a feature for a game played on date t only uses games before t.
 Rolling team stats use an exponentially weighted mean over the current season,
 blended with a prior from last season (regressed toward the league average):
 
-    pregame = (PRIOR_GAMES * prior + sum(w_i * x_i)) / (PRIOR_GAMES + sum(w_i))
+    pregame = (prior_games * prior + sum(w_i * x_i)) / (prior_games + sum(w_i))
 
 so early-season values lean on last year and later values on this year.
 
 Usage:
     python -m src.features      # writes data/processed/games_features.parquet
 """
+from dataclasses import dataclass
+
 import numpy as np
 import pandas as pd
 
@@ -21,19 +23,21 @@ from src.data_loader import load_player_stats, load_schedules
 from src.elo import compute_elo
 from src.team_stats import normalize_teams
 
-# Rolling-average settings (tunable).
-DECAY = 0.90          # weight multiplier per game back (half-life ~6.6 games)
-PRIOR_GAMES = 3.0     # how many games' worth of weight last season's value gets
-CARRYOVER = 0.6       # share of last season's deviation from average that carries over
 
-FORM_DECAY = 0.5      # short-memory "recent form" features
-FORM_PRIOR_GAMES = 1.0
+@dataclass(frozen=True)
+class FeatureParams:
+    """Settings for how pregame features are built (tuned in src/tune_features.py)."""
+    decay: float = 0.90           # weight multiplier per game back (0.9 = half-life ~6.6 games)
+    prior_games: float = 3.0      # how many games' worth of weight last season's value gets
+    carryover: float = 0.6        # share of last season's deviation from average that carries over
+    form_decay: float = 0.5       # short-memory "recent form" features
+    form_prior_games: float = 1.0
+    qb_decay: float = 0.97        # per QB game
+    qb_season_decay: float = 0.8  # extra discount per season back
+    qb_prior_plays: float = 150.0 # plays of weight given to the replacement-level prior
+    qb_prior_epa: float = -0.05   # unknown QBs are assumed slightly below average
+    qb_prior_cpoe: float = -2.0
 
-QB_DECAY = 0.97       # per QB game
-QB_SEASON_DECAY = 0.8 # extra discount at each new season
-QB_PRIOR_PLAYS = 150.0
-QB_PRIOR_EPA = -0.05  # unknown QBs are assumed slightly below average
-QB_PRIOR_CPOE = -2.0
 
 TEAM_STATS = [
     "off_epa_per_play", "off_success_rate", "off_epa_neutral", "off_pass_epa",
@@ -96,7 +100,7 @@ def _qb_game_log() -> pd.DataFrame:
     return ps[["player_id", "game_id", "season", "week", "plays", "epa", "cpoe_sum", "cpoe_att"]]
 
 
-def _qb_pregame(tg: pd.DataFrame) -> pd.DataFrame:
+def _qb_pregame(tg: pd.DataFrame, p: FeatureParams) -> pd.DataFrame:
     """Pregame QB EPA/play and CPOE for each team-game's listed starting QB,
     using only that QB's earlier games (for any team)."""
     log = _qb_game_log().merge(tg[["game_id", "gameday"]].drop_duplicates(), on="game_id")
@@ -114,16 +118,17 @@ def _qb_pregame(tg: pd.DataFrame) -> pd.DataFrame:
         games = [g for g in history.get(qb, []) if g[0] < day]
         if games:
             n = len(games)
-            w = QB_DECAY ** np.arange(n - 1, -1, -1)
+            w = p.qb_decay ** np.arange(n - 1, -1, -1)
             seasons_back = season - np.array([g[1] for g in games])
-            w = w * QB_SEASON_DECAY ** seasons_back
+            w = w * p.qb_season_decay ** seasons_back
             arr = np.array([g[2:] for g in games], dtype=float)
             plays, epa, csum, catt = (w[:, None] * arr).sum(axis=0)
             exp_out[i] = arr[:, 0].sum()
         else:
             plays = epa = csum = catt = 0.0
-        epa_out[i] = (QB_PRIOR_PLAYS * QB_PRIOR_EPA + epa) / (QB_PRIOR_PLAYS + plays)
-        cpoe_out[i] = (QB_PRIOR_PLAYS * QB_PRIOR_CPOE + csum) / (QB_PRIOR_PLAYS + catt)
+        k = p.qb_prior_plays
+        epa_out[i] = (k * p.qb_prior_epa + epa) / (k + plays)
+        cpoe_out[i] = (k * p.qb_prior_cpoe + csum) / (k + catt)
 
     return pd.DataFrame({
         "qb_epa": epa_out,
@@ -138,12 +143,12 @@ def _qb_changed(tg: pd.DataFrame) -> pd.Series:
     return (prev.notna() & (prev != tg.qb_id)).astype(int)
 
 
-def build_team_features(tg: pd.DataFrame) -> pd.DataFrame:
+def build_team_features(tg: pd.DataFrame, p: FeatureParams = FeatureParams()) -> pd.DataFrame:
     tg = tg.sort_values(["gameday", "game_id"]).reset_index(drop=True)
-    roll = _rolling_pregame(tg, TEAM_STATS, DECAY, PRIOR_GAMES, CARRYOVER)
-    form = _rolling_pregame(tg, FORM_STATS, FORM_DECAY, FORM_PRIOR_GAMES, 0.0)
+    roll = _rolling_pregame(tg, TEAM_STATS, p.decay, p.prior_games, p.carryover)
+    form = _rolling_pregame(tg, FORM_STATS, p.form_decay, p.form_prior_games, 0.0)
     form.columns = [f"form_{c}" for c in FORM_STATS]
-    qb = _qb_pregame(tg)
+    qb = _qb_pregame(tg, p)
     feats = pd.concat([tg[["game_id", "team", "season", "gameday", "rest"]], roll, form, qb], axis=1)
     feats["qb_changed"] = _qb_changed(tg)
     return feats
@@ -158,7 +163,11 @@ def _league_home_margin(games: pd.DataFrame) -> pd.Series:
     return trailing.fillna(by_season.iloc[0])
 
 
-def build_game_features(team_games: pd.DataFrame, include_future: bool = True) -> pd.DataFrame:
+def build_game_features(
+    team_games: pd.DataFrame,
+    params: FeatureParams = FeatureParams(),
+    include_future: bool = True,
+) -> pd.DataFrame:
     """One row per game (home perspective) with home-minus-away feature diffs,
     the label, and Vegas lines kept only for benchmarking."""
     sched = load_schedules()
@@ -178,7 +187,7 @@ def build_game_features(team_games: pd.DataFrame, include_future: bool = True) -
                       "team": future.away_team, "rest": future.away_rest, "qb_id": future.away_qb_id}),
     ])
     tg_all = pd.concat([team_games, placeholders], ignore_index=True)
-    feats = build_team_features(tg_all)
+    feats = build_team_features(tg_all, params)
 
     feat_cols = [c for c in feats.columns if c not in ("game_id", "team", "season", "gameday")]
     home = feats[["game_id", "team"] + feat_cols].rename(
@@ -215,8 +224,12 @@ FEATURE_COLUMNS = (
 
 
 if __name__ == "__main__":
+    from src.tune_features import load_params  # tuned settings, if tuning has been run
+
     tg = pd.read_parquet(PROCESSED_DIR / "team_games.parquet")
-    games = build_game_features(tg)
+    params = load_params()
+    print("Feature params:", params)
+    games = build_game_features(tg, params)
     path = PROCESSED_DIR / "games_features.parquet"
     games.to_parquet(path, index=False)
     played = games.home_win.notna().sum()

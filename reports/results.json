@@ -1,0 +1,50 @@
+[
+  {
+    "index":"vegas",
+    "period":"tuning 2012-18",
+    "accuracy":0.6657710908,
+    "log_loss":0.6101414767,
+    "brier":0.2113219243,
+    "games":1861
+  },
+  {
+    "index":"logistic",
+    "period":"tuning 2012-18",
+    "accuracy":0.6577109081,
+    "log_loss":0.6171782196,
+    "brier":0.2143572031,
+    "games":1861
+  },
+  {
+    "index":"elo",
+    "period":"tuning 2012-18",
+    "accuracy":0.6550241805,
+    "log_loss":0.6247936201,
+    "brier":0.2181036755,
+    "games":1861
+  },
+  {
+    "index":"vegas",
+    "period":"holdout 2019-25",
+    "accuracy":0.6637666325,
+    "log_loss":0.6083028294,
+    "brier":0.2105306993,
+    "games":1954
+  },
+  {
+    "index":"logistic",
+    "period":"holdout 2019-25",
+    "accuracy":0.6473899693,
+    "log_loss":0.6295131185,
+    "brier":0.2198732785,
+    "games":1954
+  },
+  {
+    "index":"elo",
+    "period":"holdout 2019-25",
+    "accuracy":0.6381780962,
+    "log_loss":0.6367368396,
+    "brier":0.2226703474,
+    "games":1954
+  }
+]
