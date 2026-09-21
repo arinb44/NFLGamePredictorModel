@@ -287,10 +287,13 @@ if page == "This Week":
     def badges(r):
         out = []
         for q in qb_status[(qb_status.game_id == r.game_id) & (qb_status.status != "ok")].itertuples():
+            last = lambda n: str(n).replace(" Jr.", "").replace(" II", "").split()[-1]
             if q.applied:
-                out.append((f"{q.team} QB: {q.backup_name} starts ({q.qb_name} out)", ":material/sports_football:", "violet"))
+                out.append((f"{q.team} QB: {last(q.backup_name)} starts, {last(q.qb_name)} out",
+                            ":material/sports_football:", "violet"))
             else:
-                out.append((f"{q.team} QB: {q.qb_name} left last game early", ":material/warning:", "orange"))
+                out.append((f"{q.team} QB: {last(q.qb_name)} left last game early",
+                            ":material/warning:", "orange"))
         if r.p_vegas == r.p_vegas and abs(r.p_show - r.p_vegas) >= 0.10:
             out.append(("Model vs Vegas: {:.0f} pts".format(abs(r.p_show - r.p_vegas) * 100), ":material/compare_arrows:", "orange"))
         wx = pd.DataFrame([{"wind_mph": r.wind_mph, "precip_mm": r.precip_mm, "temp_f": r.temp_f}])
