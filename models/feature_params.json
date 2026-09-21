@@ -13,5 +13,6 @@
   "player_season_decay": 0.5,
   "player_prior_games": 8.0,
   "part_decay": 0.9,
-  "part_season_decay": 0.3
+  "part_season_decay": 0.3,
+  "qb_weather_k": 2500.0
 }

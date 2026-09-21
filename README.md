@@ -25,6 +25,7 @@ src/
   venues.py         stadium locations, time zones, altitude, kickoff times (with schedule fixes)
   weather.py        game-time weather from Open-Meteo (archive, forecast, climate fallback)
   situational.py    travel and body clock, fatigue (snaps), cold shock
+  matchups.py       QB bad-weather sensitivity, pass protection vs. pass rush, blitz vulnerability
   features.py       pregame rolling features, QB features, home-minus-away game table
   tune_features.py  tunes feature settings on 2012-2018 only
   evaluate.py       walk-forward evaluation, metrics, Elo/Vegas baselines
@@ -122,7 +123,8 @@ lean on last year and later weeks on current form.
 | Defense | the same stats allowed |
 | Results | points for/against, point differential, win % |
 | Recent form | short-memory point differential and EPA |
-| Quarterback | starting QB's EPA/play and CPOE (career history, shrunk toward a replacement-level prior), experience, QB change flag |
+| Quarterback | starting QB's EPA/play and CPOE (career history weighted toward recent seasons, shrunk toward a replacement-level prior), experience, QB change flag |
+| QB in bad weather | the starting QB's own drop-off in bad weather beyond the league-wide drop, shrunk heavily; applied only in bad-weather games |
 | Skill players | share of the team's usual RB/WR/TE touches that is unavailable (injured, suspended, resting), and the biggest single absence |
 | Strength | Elo rating |
 | Situation | rest days, home-field advantage (trailing 3-season league home margin, 0 at neutral sites), divisional game |
@@ -144,8 +146,8 @@ Log loss is the main metric (lower is better) because the goal is accurate proba
 | Holdout 2019–2025 (1,954 games) | Accuracy | Log loss | Brier |
 |---|---|---|---|
 | Vegas moneyline (benchmark) | 0.664 | 0.6083 | 0.2105 |
-| **Logistic regression (final)** | **0.652** | **0.6278** | **0.2188** |
-| Random forest | 0.646 | 0.6292 | 0.2197 |
+| **Logistic regression (final)** | **0.653** | **0.6283** | **0.2191** |
+| Random forest | 0.647 | 0.6286 | 0.2194 |
 | Gradient boosting | 0.639 | 0.6300 | 0.2202 |
 | Elo | 0.638 | 0.6367 | 0.2227 |
 | Always pick home | 0.537 | 0.6929 | 0.2499 |
@@ -166,6 +168,21 @@ Random forest and gradient boosting were tuned on the tuning seasons with all fe
 - **The best boosting setup is its simplest one:** 3-leaf trees, few of them, and large leaves. More flexible setups do worse, so the signal is mostly linear.
 - **Blending doesn't help.** Tree predictions correlate 0.94–0.97 with the logistic regression's, so they add noise rather than new information.
 - **The logistic regression is also the easiest model to explain,** since each factor's contribution can be read directly from its weight.
+
+### Matchup features
+
+| Feature | Data | Tuning 2012–18 | Holdout 2019–25 | Status |
+|---|---|---|---|---|
+| QB bad-weather sensitivity | play-by-play + weather, 2006+ | 0.6154 → **0.6148** | 0.6278 → 0.6283 | In the model (chosen on tuning; within noise on holdout) |
+| Pass protection vs. pass rush | QB hits + sacks, 2006+ | 0.6154 → 0.6159 | – | Not used: sack-rate features already capture it |
+| Blitz vulnerability | FTN charting, 2022+ | can't test (no data) | 2023–25 only: 0.6246 → 0.6227 | Held out: its only evidence is from holdout seasons |
+
+- **QB bad-weather sensitivity** is shrunk hard: a QB needs about 2,500 bad-weather dropbacks before his own record counts fully.
+  - Most weather-sensitive entering 2026: Brock Purdy and Baker Mayfield.
+  - Least sensitive: Drake Maye.
+  - Jalen Hurts is about average. His completion % drops in bad weather, but his EPA doesn't drop more than other QBs'.
+- **Pressure:** the Chargers were the 4th-most pressured offense in 2025, allowing a hit or sack on 20% of dropbacks. But they are among the *best* offenses when blitzed. Their protection problem is losing one-on-one, not the blitz.
+- **Blitz vulnerability** shows the largest gain of anything tested so far. Because that evidence comes from holdout seasons, it will be judged on the 2026 season before joining the model.
 
 ### Skill-player availability
 
@@ -211,4 +228,4 @@ Each group was added separately and kept only if it improved log loss on the tun
 - [x] Interactive dashboard
 - [x] Random forest and gradient boosting, plus calibration and ensembles (logistic regression kept)
 - [x] Per-game factor explanations and prediction CLI (with QB what-ifs)
-- [ ] Matchup features: QB weather sensitivity, pass protection vs. pass rush, blitz vulnerability
+- [x] Matchup features: QB weather sensitivity (in the model), pass protection vs. pass rush (not helpful), blitz vulnerability (pending a 2026 test)

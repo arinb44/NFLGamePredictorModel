@@ -23,7 +23,9 @@ from src.config import CURRENT_SEASON, FIRST_SEASON, PROCESSED_DIR
 from src.data_loader import load_player_stats, load_schedules
 from src.elo import compute_elo
 from src.players import load_report_outs, load_roster_status, load_skill_log, skill_availability
+from src.matchups import blitz_vulnerability, load_dropbacks, qb_weather_sensitivity
 from src.situational import load_game_weather, situational_features
+from src.venues import game_venues
 from src.team_stats import normalize_teams
 
 
@@ -45,6 +47,8 @@ class FeatureParams:
     player_prior_games: float = 4.0   # shrinkage toward 0 for players with few games
     part_decay: float = 0.8           # participation memory (per team game)
     part_season_decay: float = 0.5    # participation carried into a new season
+    qb_weather_k: float = 400.0       # dropbacks of shrinkage for QB bad-weather sensitivity
+    blitz_k: float = 300.0            # dropbacks of shrinkage for blitz vulnerability
 
 
 TEAM_STATS = [
@@ -161,16 +165,29 @@ def load_player_inputs():
     return _player_inputs()
 
 
+@lru_cache(maxsize=1)
+def _matchup_inputs():
+    return load_dropbacks()
+
+
+def load_matchup_inputs():
+    """QB dropbacks with EPA and (2022+) blitzers. Cached."""
+    return _matchup_inputs()
+
+
 def build_team_features(tg: pd.DataFrame, p: FeatureParams = FeatureParams()) -> pd.DataFrame:
     tg = tg.sort_values(["gameday", "game_id"]).reset_index(drop=True)
     roll = _rolling_pregame(tg, TEAM_STATS, p.decay, p.prior_games, p.carryover)
     form = _rolling_pregame(tg, FORM_STATS, p.form_decay, p.form_prior_games, 0.0)
     form.columns = [f"form_{c}" for c in FORM_STATS]
+    pressure = _rolling_pregame(tg, ["off_pressure_rate", "def_pressure_rate"], p.decay, p.prior_games,
+                                p.carryover)
+    pressure.columns = ["pr_allowed", "pr_generated"]
     qb = _qb_pregame(tg, p)
     log, rosters, outs = load_player_inputs()
     skill = skill_availability(tg, log, rosters, outs, p.player_decay, p.player_season_decay,
                                p.player_prior_games, p.part_decay, p.part_season_decay)
-    feats = pd.concat([tg[["game_id", "team", "season", "gameday", "rest"]], roll, form, qb, skill],
+    feats = pd.concat([tg[["game_id", "team", "season", "gameday", "rest"]], roll, form, pressure, qb, skill],
                       axis=1)
     feats["qb_changed"] = _qb_changed(tg)
     return feats
@@ -238,6 +255,17 @@ def build_game_features(
     tg_all = with_placeholders(team_games, sched)
     feats = build_team_features(tg_all, params)
 
+    # Matchup inputs that need this game's weather / opponent.
+    weather = load_game_weather()
+    indoor = game_venues(sched.reset_index(drop=True))[["game_id", "indoor"]]
+    drops = load_matchup_inputs()
+    m_rows = feats[["game_id", "team", "season", "gameday"]].merge(
+        tg_all[["game_id", "team", "qb_id", "opponent"]] if "opponent" in tg_all else tg_all[["game_id", "team", "qb_id"]],
+        on=["game_id", "team"], how="left")
+    m = pd.concat([qb_weather_sensitivity(m_rows, drops, weather, indoor, params.qb_weather_k),
+                   blitz_vulnerability(m_rows, drops, params.blitz_k)], axis=1)
+    feats = pd.concat([feats, m.set_index(feats.index)], axis=1)
+
     feat_cols = [c for c in feats.columns if c not in ("game_id", "team", "season", "gameday")]
     home = feats[["game_id", "team"] + feat_cols].rename(
         columns={"team": "home_team", **{c: f"home_{c}" for c in feat_cols}})
@@ -264,6 +292,18 @@ def build_game_features(
     for c in feat_cols:
         g[f"diff_{c}"] = g[f"home_{c}"] - g[f"away_{c}"]
     g["diff_elo"] = g.home_elo_pre - g.away_elo_pre
+    # Matchups: this line vs. that pass rush; this offense vs. that blitz rate.
+    # Normalize by last season's league pressure rate (known before the season;
+    # a same-season average would leak later games).
+    by_season = team_games.groupby("season").off_pressure_rate.mean()
+    league_pr = g.season.map(by_season.shift(1).fillna(by_season.iloc[0]))
+    league_pr = league_pr.fillna(by_season.iloc[-1])
+    g["home_exp_pressure"] = g.home_pr_allowed * g.away_pr_generated / league_pr
+    g["away_exp_pressure"] = g.away_pr_allowed * g.home_pr_generated / league_pr
+    g["diff_exp_pressure"] = g.home_exp_pressure - g.away_exp_pressure
+    g["home_blitz_matchup"] = g.home_blitz_gap * g.away_def_blitz_rate.fillna(0)
+    g["away_blitz_matchup"] = g.away_blitz_gap * g.home_def_blitz_rate.fillna(0)
+    g["diff_blitz_matchup"] = g.home_blitz_matchup - g.away_blitz_matchup
     g["home_field"] = np.where(g.neutral, 0.0, g.season.map(_league_home_margin(sched)))
     g["div_game"] = g.div_game.astype(int)
     g["diff_travel_km"] = g.diff_travel_km / 1000  # thousands of km
@@ -297,8 +337,13 @@ BASE_FEATURES = (
 # The logistic regression uses base + fatigue: travel and weather did not improve
 # log loss on the tuning seasons. All groups stay available to the tree models,
 # which can pick up interactions (e.g. a warm-weather team in the cold).
-FEATURE_COLUMNS = BASE_FEATURES + FATIGUE_FEATURES
-ALL_FEATURES = BASE_FEATURES + FATIGUE_FEATURES + TRAVEL_FEATURES + WEATHER_FEATURES
+MATCHUP_FEATURES = ["diff_qb_weather_adj", "diff_exp_pressure", "diff_blitz_matchup"]
+# QB weather sensitivity improved the tuning seasons (0.6148 vs 0.6154; holdout was
+# slightly worse, 0.6283 vs 0.6278, within noise); expected
+# pressure did not (the sack-rate features already cover it); blitz data starts in
+# 2022, so it can't be tested on the tuning seasons and is kept out for now.
+FEATURE_COLUMNS = BASE_FEATURES + FATIGUE_FEATURES + ["diff_qb_weather_adj"]
+ALL_FEATURES = BASE_FEATURES + FATIGUE_FEATURES + TRAVEL_FEATURES + WEATHER_FEATURES + ["diff_qb_weather_adj"]
 
 
 def rebuild(qb_overrides=None, save: bool = True):

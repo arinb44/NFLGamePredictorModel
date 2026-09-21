@@ -18,6 +18,7 @@ import requests
 from src.config import (
     CURRENT_SEASON,
     FIRST_SEASON,
+    FTN_FIRST_SEASON,
     INJURIES_FIRST_SEASON,
     RAW_DIR,
     STALE_AFTER_HOURS,
@@ -92,6 +93,13 @@ def load_injuries(seasons: Iterable[int], refresh: bool = False) -> pd.DataFrame
     return pd.concat(frames, ignore_index=True)
 
 
+def load_ftn(seasons: Iterable[int], refresh: bool = False) -> pd.DataFrame:
+    """FTN play charting, 2022+: number of blitzers and pass rushers on each play."""
+    seasons = [s for s in seasons if s >= FTN_FIRST_SEASON]
+    frames = [pd.read_parquet(_season_file("ftn", s, refresh)) for s in seasons]
+    return pd.concat(frames, ignore_index=True)
+
+
 def load_ngs(kind: str = "passing", refresh: bool = False) -> pd.DataFrame:
     """Next Gen Stats (2016+). kind is 'passing', 'rushing' or 'receiving'."""
     dest = RAW_DIR / f"ngs_{kind}.parquet"
@@ -110,6 +118,8 @@ def download_all(start: int = FIRST_SEASON, end: int = CURRENT_SEASON) -> None:
         _season_file("rosters", s, refresh=False)
         if s >= INJURIES_FIRST_SEASON:
             _season_file("injuries", s, refresh=False)
+        if s >= FTN_FIRST_SEASON:
+            _season_file("ftn", s, refresh=False)
     print(f"Done. Cached files are in {RAW_DIR}")
 
 

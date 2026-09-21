@@ -45,6 +45,8 @@ FEATURE_LABELS = {
     "diff_form_def_epa_per_play": "Recent form: defense EPA", "diff_skill_missing": "Skill players missing",
     "diff_skill_missing_top": "Biggest single absence", "diff_rest": "Rest days", "home_field": "Home field",
     "div_game": "Divisional game", "diff_prev_snaps": "Snaps last game", "diff_prev_def_snaps": "Defensive snaps last game",
+    "diff_qb_weather_adj": "QB in bad weather", "diff_exp_pressure": "Pass rush matchup",
+    "diff_blitz_matchup": "Blitz matchup",
     "diff_snap_load": "Snaps, last 3 games", "diff_def_snap_load": "Defensive snaps, last 3 games",
     "diff_prev_def_ot_snaps": "Defensive OT snaps last game", "diff_prev_ot": "Overtime last game", "diff_road_streak": "Consecutive road games",
 }

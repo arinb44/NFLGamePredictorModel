@@ -20,7 +20,7 @@ PBP_COLUMNS = [
     "game_id", "posteam", "defteam", "play_type", "epa", "wp", "success",
     "pass", "rush", "qb_dropback", "sack", "interception", "fumble_lost",
     "yards_gained", "qb_kneel", "qb_spike", "yardline_100", "fixed_drive",
-    "fixed_drive_result", "special_teams_play", "two_point_attempt", "qtr",
+    "fixed_drive_result", "special_teams_play", "two_point_attempt", "qtr", "qb_hit",
 ]
 
 ST_PLAY_TYPES = {"kickoff", "punt", "field_goal", "extra_point"}
@@ -46,6 +46,8 @@ def _offense_stats(pbp: pd.DataFrame) -> pd.DataFrame:
     # Neutral situations: drop garbage time, where EPA says little about team quality.
     plays["neutral"] = plays.wp.between(0.10, 0.90)
     plays["turnover"] = plays.interception.fillna(0) + plays.fumble_lost.fillna(0)
+    # Pressure proxy available for every season: the QB was hit or sacked.
+    plays["pressured"] = ((plays.sack == 1) | (plays.qb_hit == 1)).astype(float)
     plays["explosive"] = (
         (plays.dropback & (plays.yards_gained >= 20))
         | (plays.designed_run & (plays.yards_gained >= 10))
@@ -65,6 +67,7 @@ def _offense_stats(pbp: pd.DataFrame) -> pd.DataFrame:
         "rush_epa": _masked_mean(plays.epa, plays.designed_run),
         "pass_rate_neutral": _masked_mean(plays.dropback.astype(float), plays.neutral),
         "sack_rate": _masked_mean(plays.sack.astype(float), plays.dropback),
+        "pressure_rate": _masked_mean(plays.pressured, plays.dropback),
         "explosive_rate": g.explosive.mean(),
         "turnovers": g.turnover.sum(),
     })

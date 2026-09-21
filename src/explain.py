@@ -23,6 +23,9 @@ import pandas as pd
 
 GROUPS = {
     "Quarterback": ["diff_qb_epa", "diff_qb_cpoe", "diff_qb_experience", "diff_qb_changed"],
+    "QB in bad weather": ["diff_qb_weather_adj"],
+    "Pass rush matchup": ["diff_exp_pressure"],
+    "Blitz matchup": ["diff_blitz_matchup"],
     "Offense": ["diff_off_epa_per_play", "diff_off_success_rate", "diff_off_epa_neutral",
                 "diff_off_pass_epa", "diff_off_rush_epa", "diff_off_sack_rate",
                 "diff_off_explosive_rate", "diff_off_rz_td_rate", "diff_off_pass_rate_neutral"],
@@ -88,6 +91,9 @@ def _details(row: pd.Series, missing: pd.DataFrame) -> Dict[str, str]:
                        f"recent point diff",
         "Elo rating": f"{h} {row.home_elo_pre:.0f} vs {a} {row.away_elo_pre:.0f}",
         "Rest": f"{h} {row.home_rest:.0f} days vs {a} {row.away_rest:.0f} days",
+        "QB in bad weather": (f"bad-weather game ({row.wind_mph:.0f} mph wind, {row.temp_f:.0f}F): "
+                              f"{row.home_qb_name} {row.home_qb_weather_sens:+.3f} vs {row.away_qb_name} "
+                              f"{row.away_qb_weather_sens:+.3f} EPA/dropback vs typical QB"),
         "Home field": f"{h} at home",
         "Baseline": "neutral site: small edge the model gives the listed home team",
         "Divisional game": "division rivals" if row.div_game else "",
