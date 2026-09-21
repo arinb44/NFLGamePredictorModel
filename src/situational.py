@@ -126,3 +126,18 @@ def situational_features(sched: pd.DataFrame, team_games: pd.DataFrame, weather:
     game = venues[["game_id", "indoor"]].merge(
         weather[["game_id", "temp_f", "wind_mph", "precip_mm"]], on="game_id", how="left")
     return team, game
+
+
+def update_game_weather(refresh: bool = False) -> pd.DataFrame:
+    """Rebuild data/processed/game_weather.parquet. Cached venue history is reused;
+    forecasts for upcoming games are refreshed when older than STALE_AFTER_HOURS."""
+    from src.config import CURRENT_SEASON, FIRST_SEASON
+    from src.data_loader import load_schedules
+    from src.team_stats import normalize_teams
+    from src.weather import game_weather
+
+    s = load_schedules()
+    s = normalize_teams(s[s.season.between(FIRST_SEASON, CURRENT_SEASON)].copy(), ["home_team", "away_team"])
+    w = game_weather(game_venues(s.reset_index(drop=True)), refresh)
+    w.to_parquet(WEATHER_PATH, index=False)
+    return w

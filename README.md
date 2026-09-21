@@ -31,6 +31,8 @@ src/
   models.py         model definitions (logistic regression, random forest, gradient boosting, ensemble)
   tune_models.py    tunes tree-model settings on 2012-2018 only
   train.py          evaluates models, fits the final model, saves it to models/
+  explain.py        exact per-game factor breakdown of a prediction
+  predict.py        predict a week (or one game) with probabilities and top factors
 notebooks/
   01_data_exploration.ipynb
   02_features.ipynb
@@ -43,7 +45,7 @@ tests/
   test_leakage.py   proves features only use information from before kickoff
 data/               downloaded data (git-ignored)
 models/             tuned feature settings (tracked) and trained models (git-ignored)
-reports/            evaluation results
+reports/            evaluation results and weekly predictions (reports/predictions/)
 ```
 
 ## Setup
@@ -62,6 +64,38 @@ python -m src.tune_models        # optional: re-tune tree models (~7 min)
 python -m src.train              # walk-forward evaluation + save final model
 streamlit run app/dashboard.py   # open the dashboard at http://localhost:8501
 ```
+
+## Predicting games
+
+```bash
+python -m src.predict --refresh                    # pull the latest data, predict the next week
+python -m src.predict --week 5                     # a specific week
+python -m src.predict --game KC@MIA                # one game (away@home)
+python -m src.predict --game KC@MIA --qb KC="Justin Fields"   # what if a backup starts?
+```
+
+Example output (2026 week 3):
+
+```
+KC @ MIA  (Sun Sep 27)
+  MIA 35.4%  |  KC 64.6%   ->  KC favored at 64.6%   (Vegas: MIA 14.8%)
+  Top factors:
+     KC + 8.9%  Quarterback            Malik Willis +0.00 vs Patrick Mahomes +0.22 EPA/play
+    MIA + 6.8%  Fatigue                OT last game: KC; defensive snaps last game MIA 47 vs KC 63
+    MIA + 6.1%  Home field             MIA at home
+     KC + 5.6%  Defense                MIA +0.036 vs KC -0.017 EPA/play allowed (lower is better)
+```
+
+With `--qb KC="Justin Fields"` the same game drops to KC 51.3%.
+
+**How the explanation works:** the model is a sum, `log-odds = Σ weight × feature`, with no intercept. Every feature is a home-minus-away difference, so evenly matched teams at a neutral site start at exactly 50%, and each factor's push is exact. Related features, such as offensive EPA and success rate, are summed into groups (Quarterback, Offense, Defense, Missing skill players, Home field, Rest, Fatigue…) because the model's split of credit between overlapping features is arbitrary. Each group's number is how far the probability would move if that group were even. `tests/test_explain.py` checks that the factors add up exactly to the model's probability.
+
+**Upcoming games:**
+- If the schedule doesn't list a starter yet, each team is assumed to start its most recent QB.
+- Player absences come from the latest injury report and roster, and are applied to the next week only.
+- Weather comes from the forecast within 16 days, and from the venue's climate average beyond that.
+
+The dashboard's **Games** page shows the same breakdown as a chart for any game.
 
 ## Dashboard
 
@@ -110,7 +144,7 @@ Log loss is the main metric (lower is better) because the goal is accurate proba
 | Holdout 2019–2025 (1,954 games) | Accuracy | Log loss | Brier |
 |---|---|---|---|
 | Vegas moneyline (benchmark) | 0.664 | 0.6083 | 0.2105 |
-| **Logistic regression (final)** | **0.653** | **0.6285** | **0.2192** |
+| **Logistic regression (final)** | **0.650** | **0.6284** | **0.2191** |
 | Random forest | 0.644 | 0.6294 | 0.2198 |
 | Gradient boosting | 0.647 | 0.6295 | 0.2200 |
 | Elo | 0.638 | 0.6367 | 0.2227 |
@@ -170,4 +204,5 @@ Each group was added separately and kept only if it improved log loss on the tun
 - [x] Skill-player availability; travel, weather and fatigue features
 - [x] Interactive dashboard
 - [x] Random forest and gradient boosting, plus calibration and ensembles (logistic regression kept)
-- [ ] Per-game factor explanations and prediction CLI
+- [x] Per-game factor explanations and prediction CLI (with QB what-ifs)
+- [ ] Matchup features: QB weather sensitivity, pass protection vs. pass rush, blitz vulnerability

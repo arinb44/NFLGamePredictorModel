@@ -4,17 +4,24 @@ from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 
 
-def logistic(C: float = 0.01) -> Pipeline:
-    """Standardize features, then L2-regularized logistic regression.
+def logistic(C: float = 0.01, symmetric: bool = True) -> Pipeline:
+    """Scale features, then L2-regularized logistic regression.
 
-    Standardizing puts every feature on the same scale (mean 0, std 1), so the
-    penalty treats them equally and the coefficients are comparable.
+    Scaling puts every feature on the same scale (std 1), so the penalty
+    treats them equally and the coefficients are comparable.
     Smaller C = stronger penalty = coefficients pulled harder toward 0, which
     helps when many features are correlated (they are here).
+
+    symmetric=True drops the intercept (and doesn't center features). Every
+    feature is a home-minus-away difference, so two identical teams at a
+    neutral site get exactly 50%, and home advantage has to come from the
+    home_field feature. With an intercept, the model gave the listed "home"
+    team a phantom edge at neutral sites. It was also slightly better on the
+    tuning seasons (0.6154 vs 0.6156 log loss).
     """
     return Pipeline([
-        ("scale", StandardScaler()),
-        ("clf", LogisticRegression(C=C, max_iter=2000)),
+        ("scale", StandardScaler(with_mean=not symmetric)),
+        ("clf", LogisticRegression(C=C, fit_intercept=not symmetric, max_iter=2000)),
     ])
 
 

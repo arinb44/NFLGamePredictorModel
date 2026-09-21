@@ -10,9 +10,9 @@
   {
     "index":"logistic",
     "period":"tuning 2012-18",
-    "accuracy":0.6603976357,
-    "log_loss":0.615620117,
-    "brier":0.2136292394,
+    "accuracy":0.6593229447,
+    "log_loss":0.6154003191,
+    "brier":0.2135475624,
     "games":1861
   },
   {
@@ -50,9 +50,9 @@
   {
     "index":"logistic",
     "period":"holdout 2019-25",
-    "accuracy":0.6530194473,
-    "log_loss":0.628534793,
-    "brier":0.2192318854,
+    "accuracy":0.6499488229,
+    "log_loss":0.6284353534,
+    "brier":0.2190726387,
     "games":1954
   },
   {

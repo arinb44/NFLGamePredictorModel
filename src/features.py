@@ -185,10 +185,44 @@ def _league_home_margin(games: pd.DataFrame) -> pd.Series:
     return trailing.fillna(by_season.iloc[0])
 
 
+def _fill_future_qbs(sched: pd.DataFrame, team_games: pd.DataFrame, qb_overrides=None) -> pd.DataFrame:
+    """Upcoming games often have no listed starter yet. Assume each team's most
+    recent starter, unless `qb_overrides` ({team: (qb_id, qb_name)}) says otherwise."""
+    last = (team_games.sort_values("gameday").dropna(subset=["qb_id"])
+            .groupby("team").tail(1).set_index("team")[["qb_id", "qb_name"]])
+    future = sched.home_score.isna()
+    for side in ("home", "away"):
+        team = sched[f"{side}_team"]
+        missing = future & sched[f"{side}_qb_id"].isna()
+        sched.loc[missing, f"{side}_qb_id"] = team[missing].map(last.qb_id)
+        sched.loc[missing, f"{side}_qb_name"] = team[missing].map(last.qb_name)
+        for t, (qb_id, qb_name) in (qb_overrides or {}).items():
+            hit = future & (team == t)
+            sched.loc[hit, f"{side}_qb_id"] = qb_id
+            sched.loc[hit, f"{side}_qb_name"] = qb_name
+    return sched
+
+
+def with_placeholders(team_games: pd.DataFrame, sched: pd.DataFrame) -> pd.DataFrame:
+    """Team-game rows plus placeholder rows for games not played yet, so upcoming
+    games get pregame features too."""
+    future = sched[~sched.game_id.isin(team_games.game_id)]
+    placeholders = pd.concat([
+        pd.DataFrame({"game_id": future.game_id, "season": future.season, "week": future.week,
+                      "gameday": future.gameday, "team": future.home_team,
+                      "rest": future.home_rest, "qb_id": future.home_qb_id}),
+        pd.DataFrame({"game_id": future.game_id, "season": future.season, "week": future.week,
+                      "gameday": future.gameday, "team": future.away_team,
+                      "rest": future.away_rest, "qb_id": future.away_qb_id}),
+    ])
+    return pd.concat([team_games, placeholders], ignore_index=True)
+
+
 def build_game_features(
     team_games: pd.DataFrame,
     params: FeatureParams = FeatureParams(),
     include_future: bool = True,
+    qb_overrides=None,
 ) -> pd.DataFrame:
     """One row per game (home perspective) with home-minus-away feature diffs,
     the label, and Vegas lines kept only for benchmarking."""
@@ -199,18 +233,9 @@ def build_game_features(
     sched["neutral"] = sched.location == "Neutral"
     if not include_future:
         sched = sched[sched.home_score.notna()]
+    sched = _fill_future_qbs(sched, team_games, qb_overrides)
 
-    # Future games have no team-game row yet; add placeholders so they get pregame features.
-    future = sched[~sched.game_id.isin(team_games.game_id)]
-    placeholders = pd.concat([
-        pd.DataFrame({"game_id": future.game_id, "season": future.season, "week": future.week,
-                      "gameday": future.gameday, "team": future.home_team,
-                      "rest": future.home_rest, "qb_id": future.home_qb_id}),
-        pd.DataFrame({"game_id": future.game_id, "season": future.season, "week": future.week,
-                      "gameday": future.gameday, "team": future.away_team,
-                      "rest": future.away_rest, "qb_id": future.away_qb_id}),
-    ])
-    tg_all = pd.concat([team_games, placeholders], ignore_index=True)
+    tg_all = with_placeholders(team_games, sched)
     feats = build_team_features(tg_all, params)
 
     feat_cols = [c for c in feats.columns if c not in ("game_id", "team", "season", "gameday")]
@@ -274,23 +299,36 @@ FEATURE_COLUMNS = BASE_FEATURES + FATIGUE_FEATURES
 ALL_FEATURES = BASE_FEATURES + FATIGUE_FEATURES + TRAVEL_FEATURES + WEATHER_FEATURES
 
 
-if __name__ == "__main__":
+def rebuild(qb_overrides=None, save: bool = True):
+    """Refresh weather, rebuild the game feature table and the missing-player list.
+    Returns (games, missing_players)."""
+    from src.situational import update_game_weather
     from src.tune_features import load_params  # tuned settings, if tuning has been run
 
+    update_game_weather()
     tg = pd.read_parquet(PROCESSED_DIR / "team_games.parquet")
     params = load_params()
-    print("Feature params:", params)
-    games = build_game_features(tg, params)
-    path = PROCESSED_DIR / "games_features.parquet"
-    games.to_parquet(path, index=False)
+    games = build_game_features(tg, params, qb_overrides=qb_overrides)
 
-    # Who was missing in each game (for explanations and the dashboard).
+    # Who was missing in each game, including upcoming ones (for explanations and the dashboard).
     log, rosters, outs = load_player_inputs()
-    tg_all = tg.sort_values(["gameday", "game_id"]).reset_index(drop=True)
+    sched = load_schedules()
+    sched = normalize_teams(sched[sched.season.between(FIRST_SEASON, CURRENT_SEASON)].copy(),
+                            ["home_team", "away_team"])
+    sched["gameday"] = pd.to_datetime(sched.gameday)
+    sched = _fill_future_qbs(sched, tg, qb_overrides)
+    tg_all = with_placeholders(tg, sched).sort_values(["gameday", "game_id"]).reset_index(drop=True)
     _, details = skill_availability(tg_all, log, rosters, outs, params.player_decay,
                                     params.player_season_decay, params.player_prior_games,
                                     params.part_decay, params.part_season_decay, return_details=True)
-    details.to_parquet(PROCESSED_DIR / "missing_players.parquet", index=False)
+    if save:
+        games.to_parquet(PROCESSED_DIR / "games_features.parquet", index=False)
+        details.to_parquet(PROCESSED_DIR / "missing_players.parquet", index=False)
+    return games, details
+
+
+if __name__ == "__main__":
+    games, _ = rebuild()
     played = games.home_win.notna().sum()
     print(f"Wrote {len(games):,} games ({played:,} played) with "
-          f"{len(FEATURE_COLUMNS)} features to {path}")
+          f"{len(FEATURE_COLUMNS)} features to {PROCESSED_DIR / 'games_features.parquet'}")

@@ -142,7 +142,13 @@ def team_home_venues(sched: pd.DataFrame, venues: pd.DataFrame) -> pd.DataFrame:
     base = (home.groupby(["season", "home_team"]).venue
             .agg(lambda x: x.value_counts().index[0]).rename("home_venue").reset_index()
             .rename(columns={"home_team": "team"}))
-    return base
+    # A team with no home game yet this season (e.g. early in the year, or only
+    # when played games are included) keeps last season's home base.
+    teams = pd.unique(pd.concat([sched.home_team, sched.away_team]))
+    grid = pd.MultiIndex.from_product([sorted(sched.season.unique()), teams], names=["season", "team"])
+    base = base.set_index(["season", "team"]).reindex(grid).reset_index().sort_values(["team", "season"])
+    base["home_venue"] = base.groupby("team").home_venue.transform(lambda v: v.ffill().bfill())
+    return base.reset_index(drop=True)
 
 
 def utc_offset_hours(tz: str, when_utc: pd.Timestamp) -> float:

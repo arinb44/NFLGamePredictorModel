@@ -135,6 +135,13 @@ def team_long(games: pd.DataFrame) -> pd.DataFrame:
     return t
 
 
+@st.cache_resource
+def load_model(version):
+    import joblib
+    from src.config import MODELS_DIR
+    return joblib.load(MODELS_DIR / "logistic.joblib")
+
+
 games, oos, missing, results = load(tuple(f.stat().st_mtime if f.exists() else 0 for f in DATA_FILES))
 teams = team_long(games)
 played = games[games.home_win.notna()]
@@ -265,14 +272,26 @@ elif page == "Games":
     default_week = played_weeks[-1] if played_weeks else weeks[0]
     week = f2.selectbox("Week", weeks, index=weeks.index(default_week))
     g = pred[(pred.season == season) & (pred.week == week)].copy()
+    from src.config import MODELS_DIR
+    from src.explain import explain
+    model_path = MODELS_DIR / "logistic.joblib"
+    bundle = load_model(model_path.stat().st_mtime) if model_path.exists() else None
+    if bundle is not None:
+        # Games without an out-of-sample prediction (e.g. upcoming) get the final model's prediction.
+        live = bundle["model"].predict_proba(g[bundle["features"]])[:, 1]
+        g["p_home"] = np.where(g.p_home.isna(), live, g.p_home)
+        vg = g.home_moneyline.notna() & g.p_vegas.isna()
+        if vg.any():
+            from src.evaluate import moneyline_prob
+            g.loc[vg, "p_vegas"] = moneyline_prob(g.loc[vg, "home_moneyline"], g.loc[vg, "away_moneyline"])
     g["matchup"] = g.away_team + " @ " + g.home_team
     g["winner"] = np.select([g.home_score > g.away_score, g.home_score < g.away_score],
                             [g.home_team, g.away_team], "")
     g["model_pick"] = np.where(g.p_home >= 0.5, g.home_team, g.away_team)
     g.loc[g.p_home.isna(), "model_pick"] = ""
     g["correct"] = np.where(g.winner == "", None, g.model_pick == g.winner)
-    st.caption("Model probabilities are out-of-sample: each season is predicted by a model trained only on "
-               "earlier seasons. Upcoming games appear once the prediction step is built.")
+    st.caption("Past games show out-of-sample probabilities (each season predicted by a model trained only on "
+               "earlier seasons). Upcoming games use the final model.")
     st.dataframe(g[["gameday", "matchup", "home_qb_name", "away_qb_name", "p_home", "p_vegas", "p_elo",
                     "model_pick", "winner", "correct", "home_score", "away_score"]],
                  hide_index=True, use_container_width=True,
@@ -283,6 +302,45 @@ elif page == "Games":
                                                                           max_value=1, format="percent"),
                                 "p_vegas": st.column_config.NumberColumn("Vegas: home win %", format="percent"),
                                 "p_elo": st.column_config.NumberColumn("Elo: home win %", format="percent")})
+
+    if bundle is not None and len(g):
+        st.subheader("Why? Factors behind a prediction")
+        pick = st.selectbox("Game", list(g.matchup))
+        row = g[g.matchup == pick]
+        e = explain(bundle, row.reset_index(drop=True), missing, top=20)[0]
+        r0 = row.iloc[0]
+        ph = e["p_home"]
+        c1, c2, c3 = st.columns(3)
+        c1.metric(f"{r0.home_team} (home)", f"{ph:.1%}")
+        c2.metric(f"{r0.away_team} (away)", f"{1 - ph:.1%}")
+        if r0.p_vegas == r0.p_vegas:
+            c3.metric(f"Vegas: {r0.home_team}", f"{r0.p_vegas:.1%}")
+        st.caption("Starting point: two evenly matched teams = 50%. Each bar is how much "
+                   "the probability would move if that factor were even. Blue pushes toward the home team, red toward "
+                   "the away team. Hover for details.")
+        f = pd.DataFrame(e["all_factors"])
+        f = f[f.pct_points.abs() >= 0.001]
+        f["pts"] = f.pct_points * 100
+        f["direction"] = np.where(f.pts >= 0, f"Favors {r0.home_team}", f"Favors {r0.away_team}")
+        f["label"] = f.pts.map(lambda v: f"{v:+.1f}%")
+        bars = alt.Chart(f).mark_bar(cornerRadiusEnd=4).encode(
+            y=alt.Y("factor:N", sort=alt.EncodingSortField("pts", op="max", order="descending"), title=None,
+                    axis=alt.Axis(labelLimit=220, labelOverlap=False)),
+            x=alt.X("pts:Q", title="Percentage points",
+                    scale=alt.Scale(domain=[min(f.pts.min(), 0) - 2.5, max(f.pts.max(), 0) + 2.5])),
+            color=alt.Color("direction:N", legend=alt.Legend(title=None),
+                            scale=alt.Scale(domain=[f"Favors {r0.home_team}", f"Favors {r0.away_team}"],
+                                            range=[BLUE, RED])),
+            tooltip=["factor", alt.Tooltip("pts:Q", format="+.1f", title="points"), "detail"])
+        def labels(align, dx, cond):
+            return alt.Chart(f).transform_filter(cond).mark_text(
+                align=align, dx=dx, fontSize=11, color=TEXT_2).encode(
+                y=alt.Y("factor:N", sort=alt.EncodingSortField("pts", op="max", order="descending")),
+                x="pts:Q", text="label:N")
+        chart = bars + labels("left", 4, "datum.pts >= 0") + labels("right", -4, "datum.pts < 0")
+        st.altair_chart(style(chart, 28 * len(f) + 40), use_container_width=True)
+        st.dataframe(f[["factor", "label", "direction", "detail"]].rename(columns={"label": "effect"}),
+                     hide_index=True, use_container_width=True)
 
     st.subheader(f"{season}: model vs. Vegas")
     s = pred[(pred.season == season) & pred.p_home.notna() & pred.p_vegas.notna()].copy()

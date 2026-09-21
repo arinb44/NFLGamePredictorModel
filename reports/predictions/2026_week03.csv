@@ -1,0 +1,17 @@
+game_id,away,home,p_home,p_vegas,factor_1,factor_2,factor_3,factor_4
+2026_03_ATL_GB,ATL,GB,0.6714,0.7409,GB +6.5% Home field,GB +2.8% Scoring & record,ATL +2.7% Fatigue,GB +1.9% Recent form
+2026_03_ARI_SF,ARI,SF,0.8337,0.7914,SF +4.3% Home field,SF +4.2% Quarterback,SF +4.2% Scoring & record,SF +4.1% Offense
+2026_03_BAL_DAL,BAL,DAL,0.4484,0.417,BAL +3.3% Defense,BAL +2.0% Scoring & record,DAL +1.9% Special teams,BAL +1.4% Elo rating
+2026_03_CAR_CLE,CAR,CLE,0.529,0.417,CLE +7.0% Home field,CLE +5.6% Quarterback,CAR +4.8% Offense,CLE +2.4% Fatigue
+2026_03_CIN_PIT,CIN,PIT,0.4923,0.3775,PIT +7.0% Home field,CIN +2.9% Recent form,CIN +2.3% Offense,CIN +2.1% Scoring & record
+2026_03_HOU_IND,HOU,IND,0.4705,0.417,IND +6.9% Home field,HOU +5.3% Defense,HOU +3.8% Fatigue,IND +3.4% Offense
+2026_03_KC_MIA,KC,MIA,0.3543,0.1475,KC +8.9% Quarterback,MIA +6.8% Fatigue,MIA +6.1% Home field,KC +5.6% Defense
+2026_03_LAC_BUF,LAC,BUF,0.7858,0.7258,BUF +7.3% Offense,BUF +5.1% Home field,BUF +4.8% Recent form,BUF +3.9% Scoring & record
+2026_03_LA_DEN,LA,DEN,0.5674,0.4486,DEN +7.0% Home field,DEN +3.5% Defense,LA +3.4% Offense,LA +1.8% Missing skill players
+2026_03_LV_NO,LV,NO,0.5615,0.6092,NO +7.0% Home field,NO +4.3% Offense,LV +3.9% Quarterback,LV +2.1% Defense
+2026_03_MIN_TB,MIN,TB,0.5368,0.4573,TB +7.0% Home field,TB +4.5% Quarterback,MIN +4.0% Defense,MIN +3.9% Scoring & record
+2026_03_NE_JAX,NE,JAX,0.5811,0.583,JAX +7.0% Home field,NE +3.5% Defense,JAX +3.0% Offense,JAX +2.2% Recent form
+2026_03_NYJ_DET,NYJ,DET,0.747,0.705,DET +5.7% Home field,DET +3.6% Offense,DET +3.0% Scoring & record,DET +2.9% Fatigue
+2026_03_SEA_WAS,SEA,WAS,0.367,0.2864,SEA +9.1% Defense,SEA +8.5% Scoring & record,WAS +6.3% Home field,SEA +4.9% Elo rating
+2026_03_TEN_NYG,TEN,NYG,0.7649,0.705,NYG +5.4% Home field,NYG +5.3% Quarterback,NYG +3.7% Offense,NYG +3.1% Scoring & record
+2026_03_PHI_CHI,PHI,CHI,0.4984,0.3962,CHI +7.0% Home field,PHI +3.9% Quarterback,PHI +3.2% Defense,CHI +1.9% Offense

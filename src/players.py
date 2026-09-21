@@ -127,8 +127,9 @@ def skill_availability(
                 cur_season = r.season
             week = int(r.week)
             key = (r.season, week, team)
+            last_week = latest_week.get((r.season, team), week)
             if key not in roster_status:  # e.g. upcoming week not published yet
-                key = (r.season, latest_week.get((r.season, team), week), team)
+                key = (r.season, last_week, team)
             status = roster_status.get(key)
             here = played.get((r.game_id, team))
             upcoming = here is None
@@ -142,7 +143,9 @@ def skill_availability(
                 if st is None or st in GONE_STATUSES:
                     continue  # left the team (or not on this week's roster)
                 if upcoming:
-                    is_missing = pid in report or st in OUT_STATUSES
+                    # Roster status and injury reports only tell us about the next
+                    # game; further out, assume no known absences.
+                    is_missing = week <= last_week + 1 and (pid in report or st in OUT_STATUSES)
                 else:
                     is_missing = pid not in here
                 if not is_missing:
