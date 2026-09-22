@@ -146,3 +146,14 @@ def blitz_vulnerability(tg: pd.DataFrame, dropbacks: pd.DataFrame, k: float = 30
         db, dall = def_hist.before(team, day)
         rate[i] = db / dall if dall > 0 else np.nan
     return pd.DataFrame({"blitz_gap": gap, "def_blitz_rate": rate}, index=tg.index)
+
+
+def blitz_team_games(seasons=None) -> pd.DataFrame:
+    """Per team-game blitzed / not-blitzed dropbacks and EPA (FTN charting, 2022+), for the dashboard."""
+    seasons = seasons or range(FTN_FIRST_SEASON, CURRENT_SEASON + 1)
+    d = load_dropbacks(seasons).dropna(subset=["n_blitzers"])
+    blitz = d.n_blitzers > 0
+    d = d.assign(season=d.game_id.str[:4].astype(int), team=d.posteam,
+                 n_b=blitz.astype(int), s_b=np.where(blitz, d.epa, 0.0),
+                 n_nb=(~blitz).astype(int), s_nb=np.where(blitz, 0.0, d.epa))
+    return d.groupby(["season", "team", "game_id"])[["n_b", "s_b", "n_nb", "s_nb"]].sum().reset_index()

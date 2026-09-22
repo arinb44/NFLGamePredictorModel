@@ -1,0 +1,12 @@
+# Dependencies for the hosted dashboard (Streamlit Community Cloud reads this file
+# because it sits next to the entrypoint, app/dashboard.py). Versions are pinned to
+# match the environment the models were trained in, so the saved models load exactly.
+streamlit==1.50.0
+altair==5.5.0
+pandas==2.3.3
+numpy==2.0.2
+scikit-learn==1.6.1
+scipy==1.13.1
+pyarrow==21.0.0
+requests==2.32.5
+joblib==1.5.3

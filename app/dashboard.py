@@ -20,6 +20,22 @@ sys.path.insert(0, str(ROOT))
 
 from src.config import PROCESSED_DIR  # noqa: E402
 
+# Hosted mode (e.g. Streamlit Community Cloud): the data isn't in git, so download
+# the bundle published by `python -m src.publish`, and refresh it hourly.
+HOSTED_MARKER = PROCESSED_DIR / ".downloaded"
+
+
+@st.cache_data(ttl=3600, show_spinner="Loading the latest predictions...")
+def sync_hosted_data():
+    from src.publish import download
+    download()
+    HOSTED_MARKER.write_text(pd.Timestamp.now(tz="UTC").isoformat())
+    return HOSTED_MARKER.read_text()
+
+
+if not (PROCESSED_DIR / "games_features.parquet").exists() or HOSTED_MARKER.exists():
+    sync_hosted_data()
+
 # ---------------------------------------------------------------- style
 # Validated categorical palette (first three slots are safe for all pairs and
 # for color-vision deficiency). Blue <-> red is the diverging pair.
@@ -155,7 +171,7 @@ def team_scatter(df, x, y, x_title, y_title, focus, x_fmt="%", y_fmt="%", revers
     return style(alt.layer(*layers, dots, names), height)
 
 
-@st.cache_data
+@st.cache_data(ttl=3600)
 def prime_time_records():
     """Each QB's prime-time record vs the wins the model expected (out-of-sample, 2012+)."""
     from src.data_loader import load_schedules
@@ -175,16 +191,13 @@ def prime_time_records():
 
 
 @st.cache_data
-def load_blitz():
+def load_blitz(version=None):
     """Per team-game blitzed / not-blitzed dropbacks and EPA (FTN charting, 2022+)."""
-    from src.config import CURRENT_SEASON, FTN_FIRST_SEASON
-    from src.matchups import load_dropbacks
-    d = load_dropbacks(range(FTN_FIRST_SEASON, CURRENT_SEASON + 1)).dropna(subset=["n_blitzers"])
-    blitz = d.n_blitzers > 0
-    d = d.assign(season=d.game_id.str[:4].astype(int), team=d.posteam,
-                 n_b=blitz.astype(int), s_b=np.where(blitz, d.epa, 0.0),
-                 n_nb=(~blitz).astype(int), s_nb=np.where(blitz, 0.0, d.epa))
-    return d.groupby(["season", "team", "game_id"])[["n_b", "s_b", "n_nb", "s_nb"]].sum().reset_index()
+    path = PROCESSED_DIR / "blitz_team_games.parquet"
+    if path.exists():
+        return pd.read_parquet(path)
+    from src.matchups import blitz_team_games
+    return blitz_team_games()
 
 
 @st.cache_data
@@ -230,7 +243,7 @@ def team_meta():
     return {k: {"name": r.team_name, "nick": r.team_nick, "logo": r.team_logo_espn} for k, r in t.iterrows()}
 
 
-@st.cache_data
+@st.cache_data(ttl=3600)
 def kickoffs():
     """game_id -> kickoff (US Eastern) from the schedule."""
     from src.data_loader import load_schedules
@@ -1030,7 +1043,8 @@ elif page == "Matchups":
     st.caption("EPA per dropback when blitzed minus when not blitzed, for the season. The dashed line is the league "
                "average; left of it = hurt by the blitz more than most offenses, right = handles it better. "
                "One season is a small sample, so expect big swings year to year.")
-    bl = load_blitz()
+    _bp = PROCESSED_DIR / "blitz_team_games.parquet"
+    bl = load_blitz(_bp.stat().st_mtime if _bp.exists() else 0)
     opts_b = sorted(bl.season.unique(), reverse=True)
     games_per = bl.groupby("season").game_id.nunique()
     default_b = max(int(x) for x in games_per[games_per >= 100].index)
