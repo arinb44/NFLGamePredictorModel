@@ -387,7 +387,7 @@ if page == "This Week":
         for q in qb_status[(qb_status.game_id == r.game_id) & (qb_status.status != "ok")].itertuples():
             last = lambda n: str(n).replace(" Jr.", "").replace(" II", "").split()[-1]
             if q.status == "set":
-                out.append((f"{q.team} QB: {last(q.qb_name)} (your pick)", ":material/sports_football:", "gray"))
+                out.append((f"{q.team} QB: {last(q.qb_name)} (set manually)", ":material/sports_football:", "gray"))
             elif q.applied:
                 out.append((f"{q.team} QB: {last(q.backup_name)} starts, {last(q.qb_name)} out",
                             ":material/sports_football:", "violet"))

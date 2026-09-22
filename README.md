@@ -1,5 +1,9 @@
 # NFL Game Predictor Model
 
+[![Live demo](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://nflgamepredictormodel.streamlit.app)
+
+**[Open the live dashboard](https://nflgamepredictormodel.streamlit.app)**: this week's games with win probabilities, spreads and the reasons behind each prediction. It updates automatically three times a week.
+
 A machine learning model that predicts the **win probability** of each team in an NFL game and explains **which factors drove the prediction**.
 
 Built with Python, pandas and scikit-learn on [nflverse](https://github.com/nflverse/nflverse-data) data, with weather from [Open-Meteo](https://open-meteo.com) (CC BY 4.0). Includes an interactive Streamlit dashboard.
@@ -157,7 +161,12 @@ The dashboard's **This Week** page shows the same breakdown as a waterfall chart
 
 ## Dashboard
 
-`streamlit run app/dashboard.py` opens an interactive dashboard:
+**Hosted version: https://nflgamepredictormodel.streamlit.app** (Streamlit Community Cloud).
+- The hosted app downloads its data from the `dashboard-data` GitHub Release, which each scheduled run republishes with `python -m src.publish`.
+- It checks for new data hourly.
+- Its dependencies are pinned in `app/requirements.txt`.
+
+To run it locally, `streamlit run app/dashboard.py` opens the same dashboard:
 
 | Section | What it shows |
 |---|---|
