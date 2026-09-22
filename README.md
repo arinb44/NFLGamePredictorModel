@@ -139,7 +139,14 @@ Each game also prints a spread line, e.g. `Spread: model KC -3.5 | Vegas KC -11.
 | Reserve or inactive | weekly roster | the backup starts automatically |
 | Left his last game early (another QB took the final 5+ dropbacks) | play-by-play | a warning only, since it could be an injury or a blowout benching |
 
-For warnings, pass `--qb TEAM="Name"`, or `--assume-backups` to start every flagged backup. The backup is the top other QB on the latest depth chart. In week 3 of 2026 this caught stale schedule listings for Atlanta (Tua inactive, Penix starting) and Minnesota (Murray inactive, Wentz starting), and flagged Jayden Daniels and Caleb Williams after both left week 2 early.
+For warnings, pass `--qb TEAM="Name"`, or `--assume-backups` to start every flagged backup.
+
+**Standing starters:** when you know who's starting from now on, set it once. Every run, scheduled or manual, uses him for all remaining games, and those predictions count as real ones (saved and recorded in the live tests), unlike `--qb` what-ifs. Only an official Out or Doubtful injury report overrides a standing starter, and the run warns you when that happens. Standing starters are stored in `config/starters.json`.
+
+```bash
+python -m src.qb_status --set ATL "Michael Penix Jr."
+python -m src.qb_status --clear ATL
+``` The backup is the top other QB on the latest depth chart. In week 3 of 2026 this caught stale schedule listings for Atlanta (Tua inactive, Penix starting) and Minnesota (Murray inactive, Wentz starting), and flagged Jayden Daniels and Caleb Williams after both left week 2 early.
 
 **Upcoming games:**
 - If the schedule doesn't list a starter yet, each team is assumed to start its most recent QB, then the QB checks above apply.
