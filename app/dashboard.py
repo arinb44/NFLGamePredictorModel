@@ -240,7 +240,11 @@ def load_spread(version):
 def team_meta():
     from src.data_loader import load_teams
     t = load_teams().set_index("team_abbr")
-    return {k: {"name": r.team_name, "nick": r.team_nick, "logo": r.team_logo_espn} for k, r in t.iterrows()}
+    from matchup_card import glow_color
+    return {k: {"name": r.team_name, "nick": r.team_nick, "logo": r.team_logo_espn,
+                "logo_dark": str(r.team_logo_espn).replace("/500/", "/500-dark/"),
+                "city": r.team_name[: -len(r.team_nick)].strip() if r.team_name.endswith(r.team_nick) else "",
+                "glow": glow_color(r.team_color, r.team_color2)} for k, r in t.iterrows()}
 
 
 @st.cache_data(ttl=3600)
@@ -249,6 +253,14 @@ def kickoffs():
     from src.data_loader import load_schedules
     s = load_schedules()[["game_id", "gameday", "gametime"]]
     return dict(zip(s.game_id, pd.to_datetime(s.gameday + " " + s.gametime.fillna("13:00"))))
+
+
+@st.cache_data(ttl=3600)
+def stadiums():
+    """game_id -> stadium name from the schedule."""
+    from src.data_loader import load_schedules
+    s = load_schedules()[["game_id", "stadium"]].dropna()
+    return dict(zip(s.game_id, s.stadium))
 
 
 def waterfall_chart(e, home, away, height=None):
@@ -319,8 +331,11 @@ if page == "This Week":
     from src.explain import explain
     from src.evaluate import moneyline_prob
     from src.matchups import bad_weather
+    from matchup_card import card_css, card_html
     meta = team_meta()
     ko = kickoffs()
+    venues = stadiums()
+    st.html(card_css())
     model_path = MODELS_DIR / "logistic.joblib"
     bundle = load_model(model_path.stat().st_mtime)
 
@@ -372,13 +387,6 @@ if page == "This Week":
     if detail not in set(wg.game_id):
         detail = None
 
-    def title_html(r, size=34):
-        a, h = meta.get(r.away_team, {}), meta.get(r.home_team, {})
-        img = lambda m: f'<img src="{m.get("logo", "")}" style="height:{size}px;vertical-align:middle">' if m else ""
-        return (f'<div style="display:flex;align-items:center;gap:10px;font-size:{17 if size < 40 else 24}px;font-weight:600">'
-                f'{img(a)}<span>{a.get("nick", r.away_team)}</span><span style="color:{GRAY};font-weight:400">at</span>'
-                f'{img(h)}<span>{h.get("nick", r.home_team)}</span></div>')
-
     qb_path = PROCESSED_DIR / "qb_status.parquet"
     qb_status = pd.read_parquet(qb_path) if qb_path.exists() else pd.DataFrame(columns=["game_id", "status"])
 
@@ -421,9 +429,9 @@ if page == "This Week":
         for i, r in wg.iterrows():
             e = exps[r.game_id]
             with cols[i % 2].container(border=True):
-                st.markdown(title_html(r), unsafe_allow_html=True)
                 when = r.kickoff.strftime("%a %b %-d · %-I:%M %p ET") if pd.notna(r.kickoff) else ""
-                st.caption(f"{when}  ·  {r.away_qb_name} vs {r.home_qb_name}")
+                st.html(card_html(r.away_team, r.home_team, meta, r.p_show, date=when, compact=True))
+                st.caption(f"{r.away_qb_name} vs {r.home_qb_name}")
                 st.markdown(prob_bar(r.home_team, r.away_team, r.p_show, r.p_vegas), unsafe_allow_html=True)
                 vegas_txt = ""
                 if r.p_vegas == r.p_vegas:
@@ -462,14 +470,14 @@ if page == "This Week":
         if st.button("All games", icon=":material/arrow_back:"):
             st.session_state.pop("detail_game", None)
             st.rerun()
-        st.markdown(title_html(r, size=56), unsafe_allow_html=True)
-        when = r.kickoff.strftime("%A %B %-d · %-I:%M %p ET") if pd.notna(r.kickoff) else ""
-        st.caption(f"{when} · {r.away_qb_name} vs {r.home_qb_name}")
-        c1, c2, c3 = st.columns(3)
-        c1.metric(f"{r.away_team} win", f"{1 - r.p_show:.1%}")
-        c2.metric(f"{r.home_team} win", f"{r.p_show:.1%}")
+        when = r.kickoff.strftime("%a · %b %-d · %-I:%M %p ET") if pd.notna(r.kickoff) else ""
+        venue = venues.get(r.game_id, "") + (" · neutral site" if r.neutral else "")
+        st.html(card_html(r.away_team, r.home_team, meta, r.p_show, date=when,
+                          sub=f"{r.away_qb_name} vs {r.home_qb_name}", venue=venue,
+                          pill="Pregame win probability" if r.home_score == r.home_score else "Win probability"))
         if r.p_vegas == r.p_vegas:
-            c3.metric(f"Vegas: {r.home_team}", f"{r.p_vegas:.1%}", f"{(r.p_show - r.p_vegas) * 100:+.1f} pts model vs Vegas",
+            vfav, vp = (r.home_team, r.p_vegas) if r.p_vegas >= 0.5 else (r.away_team, 1 - r.p_vegas)
+            st.metric(f"Vegas: {vfav} win", f"{vp:.1%}", f"{(r.p_show - r.p_vegas) * 100:+.1f} pts model vs Vegas on {r.home_team}",
                       delta_color="off")
         st.markdown(prob_bar(r.home_team, r.away_team, r.p_show, r.p_vegas), unsafe_allow_html=True)
         if r.margin == r.margin:
