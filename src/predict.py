@@ -37,22 +37,7 @@ def refresh_data():
     build_team_games().to_parquet(PROCESSED_DIR / "team_games.parquet", index=False)
 
 
-def resolve_qb(team: str, name: str):
-    """Find a QB's player id from his name (full or last name) on the team's current roster."""
-    from src.data_loader import load_rosters
-    from src.players import ROSTER_TEAM_MAP
-
-    r = load_rosters([CURRENT_SEASON])
-    r = r.assign(team=r.team.replace(ROSTER_TEAM_MAP))
-    r = r[(r.position == "QB") & (r.team == team)].drop_duplicates("gsis_id", keep="last")
-    q = name.lower()
-    hit = r[r.full_name.str.lower() == q]
-    if hit.empty:
-        hit = r[r.full_name.str.lower().str.contains(q, regex=False)]
-    if len(hit) != 1:
-        options = ", ".join(r.full_name.unique())
-        raise SystemExit(f"Couldn't uniquely match QB '{name}' on {team}. Roster QBs: {options}")
-    return hit.gsis_id.iloc[0], hit.full_name.iloc[0]
+from src.qb_status import resolve_qb  # noqa: E402  (kept importable from here)
 
 
 def main():
@@ -88,7 +73,9 @@ def main():
     if qs is not None and len(qs) and (qs.status != "ok").any():
         print("\nQB status for each team's next game:")
         for r in qs[qs.status != "ok"].itertuples():
-            if r.applied:
+            if r.status == "set":
+                print(f"  {r.team}: {r.qb_name} starting ({r.reason})")
+            elif r.applied:
                 print(f"  {r.team}: {r.qb_name} -> {r.backup_name} starting ({r.reason})")
             else:
                 print(f"  {r.team}: WARNING {r.qb_name} {r.reason}. Model still uses {r.qb_name}; "

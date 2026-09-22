@@ -259,8 +259,18 @@ def apply_qb_status(sched: pd.DataFrame, team_games: pd.DataFrame, qb_overrides=
     Returns (sched, status table)."""
     sched = _fill_future_qbs(sched, team_games, qb_overrides)
     try:
-        from src.qb_status import qb_availability
-        status = qb_availability(sched)
+        from src.qb_status import load_standing_starters, qb_availability
+        from src.qb_status import load_standing_since
+        standing = {t: v for t, v in load_standing_starters().items() if t not in (qb_overrides or {})}
+        since = load_standing_since()
+        # Only current-season games not yet played, from the date the starter was set.
+        future = sched.home_score.isna() & (sched.season == CURRENT_SEASON)
+        for t, (qb_id, qb_name) in standing.items():  # your standing starters, every upcoming game
+            for side in ("home", "away"):
+                hit = future & (sched[f"{side}_team"] == t) & (pd.to_datetime(sched.gameday) >= since.get(t, pd.Timestamp.min))
+                sched.loc[hit, f"{side}_qb_id"] = qb_id
+                sched.loc[hit, f"{side}_qb_name"] = qb_name
+        status = qb_availability(sched, standing=standing)
     except Exception as exc:  # e.g. offline: keep the listed starters
         print(f"QB status check skipped: {exc}")
         return sched, pd.DataFrame()
@@ -273,7 +283,7 @@ def apply_qb_status(sched: pd.DataFrame, team_games: pd.DataFrame, qb_overrides=
             hit = (sched.game_id == r.game_id) & (sched[f"{side}_team"] == r.team)
             sched.loc[hit, f"{side}_qb_id"] = r.backup_id
             sched.loc[hit, f"{side}_qb_name"] = r.backup_name
-    status["applied"] = status.index.isin(swap.index)
+    status["applied"] = status.index.isin(swap.index) | (status.status == "set")
     return sched, status
 
 
