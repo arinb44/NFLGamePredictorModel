@@ -24,6 +24,9 @@ fi
 "$PY" -m src.predict --refresh --top 3 || { echo "predict failed"; exit 1; }
 "$PY" -m src.track | tail -8
 
+# Update the hosted dashboard's data (GitHub Release "dashboard-data").
+"$PY" -m src.publish 2>&1 | tail -1 || echo "Publishing dashboard data failed."
+
 # Commit and push the pregame record (predictions + live-test tracking).
 git add reports/predictions reports/live_tracking.csv
 if git diff --cached --quiet; then
