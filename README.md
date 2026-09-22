@@ -71,6 +71,30 @@ python -m src.coverage           # man/zone coverage analytics for the dashboard
 streamlit run app/dashboard.py   # open the dashboard at http://localhost:8501
 ```
 
+## Automation
+
+A macOS LaunchAgent runs `scripts/weekly_run.sh` at three times (Eastern), so every game gets a fresh prediction shortly before kickoff:
+- **Thursday 12:00 PM**, before Thursday Night Football
+- **Sunday 11:00 AM**, after most injury news and before the 1 PM games
+- **Monday 12:00 PM**, before Monday Night Football
+
+Each run:
+1. refreshes the current season's data
+2. runs `src.predict`, which also records both live-test models before kickoff
+3. prints the live scoreboards
+4. commits and pushes `reports/predictions/` and `reports/live_tracking.csv`
+
+The commit history is a timestamped record showing the predictions were made before the games. If the Mac is asleep at a scheduled time, the run happens when it wakes. Output goes to `logs/weekly_run.log`.
+
+```bash
+cp scripts/com.nflpredictor.weekly.plist ~/Library/LaunchAgents/
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.nflpredictor.weekly.plist   # install
+launchctl kickstart gui/$(id -u)/com.nflpredictor.weekly                                 # run now
+launchctl bootout gui/$(id -u)/com.nflpredictor.weekly                                   # uninstall
+```
+
+The project must live outside `~/Documents`, `~/Desktop` and `~/Downloads`, because macOS blocks background jobs from reading those folders. The paths in the plist point to `~/Projects/NFLGamePredictorModel`. Next season, update `CURRENT_SEASON` in `src/config.py`.
+
 ## Predicting games
 
 ```bash
