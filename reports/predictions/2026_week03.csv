@@ -1,5 +1,5 @@
 game_id,away,home,p_home,p_vegas,model_spread,vegas_spread,factor_1,factor_2,factor_3
-2026_03_ATL_GB,ATL,GB,0.6554,0.7136,GB -5,GB -6,GB +7.0% Home field,ATL +3.2% Fatigue,GB +2.6% Scoring & record
+2026_03_ATL_GB,ATL,GB,0.7725,0.7136,GB -9.5,GB -6,GB +15.3% Quarterback,GB +6.1% Home field,ATL +2.7% Fatigue
 2026_03_ARI_SF,ARI,SF,0.8231,0.7867,SF -12,SF -8.5,SF +7.0% Home field,SF +6.7% Quarterback,SF +6.0% Scoring & record
 2026_03_BAL_DAL,BAL,DAL,0.4398,0.417,BAL -3,BAL -3,BAL +3.3% Defense,BAL +1.9% Scoring & record,DAL +1.8% Special teams
 2026_03_CAR_CLE,CAR,CLE,0.522,0.417,CLE -1.5,CAR -2.5,CLE +7.0% Home field,CAR +4.4% Offense,CLE +3.3% Quarterback
