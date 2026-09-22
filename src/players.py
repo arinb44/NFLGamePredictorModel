@@ -56,6 +56,35 @@ def load_roster_status(seasons=range(FIRST_SEASON, CURRENT_SEASON + 1)) -> pd.Da
     return r[["season", "week", "team", "gsis_id", "status"]].rename(columns={"gsis_id": "player_id"})
 
 
+# Defense: same availability logic, valued by share of the team's defensive playmaking.
+DEF_GROUPS = ("DL", "LB", "DB")
+DEF_POSITIONS = {"DL", "LB", "DB", "DE", "DT", "NT", "OLB", "ILB", "MLB", "CB", "S", "SS", "FS", "SAF", "EDGE"}
+DEF_WEIGHTS = {"def_sacks": 1.0, "def_interceptions": 1.0, "def_fumbles_forced": 1.0,
+               "def_qb_hits": 0.5, "def_tackles_for_loss": 0.5, "def_pass_defended": 0.5}
+
+
+def load_def_log(seasons=range(FIRST_SEASON, CURRENT_SEASON + 1)) -> pd.DataFrame:
+    """One row per defender per game played. value = his share of the team's
+    defensive playmaking that game (sacks, INTs, forced fumbles = 1; QB hits,
+    tackles for loss, passes defended = 0.5)."""
+    ps = load_player_stats(seasons)
+    ps = ps[ps.position_group.isin(DEF_GROUPS)].copy()
+    ps["team"] = ps.team.replace(ROSTER_TEAM_MAP)
+    plays = sum(ps[c].fillna(0) * w for c, w in DEF_WEIGHTS.items() if c in ps)
+    total = plays.groupby([ps.game_id, ps.team]).transform("sum")
+    ps["value"] = (plays / total.where(total > 0)).fillna(0.0)
+    ps["epa"] = plays  # raw playmaking count, kept for display
+    return ps[["player_id", "player_display_name", "position_group", "team", "game_id",
+               "season", "week", "value", "epa"]].rename(columns={"player_display_name": "name"})
+
+
+def load_def_roster_status(seasons=range(FIRST_SEASON, CURRENT_SEASON + 1)) -> pd.DataFrame:
+    r = load_rosters(seasons)
+    r = r[r.position.isin(DEF_POSITIONS) | r.depth_chart_position.isin(DEF_POSITIONS)]
+    r = r.assign(team=r.team.replace(ROSTER_TEAM_MAP))
+    return r[["season", "week", "team", "gsis_id", "status"]].rename(columns={"gsis_id": "player_id"})
+
+
 def load_report_outs(seasons=range(FIRST_SEASON, CURRENT_SEASON + 1)) -> pd.DataFrame:
     inj = load_injuries(seasons)
     inj = inj[inj.report_status.isin(OUT_REPORT)]

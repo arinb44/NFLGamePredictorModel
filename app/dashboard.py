@@ -43,7 +43,7 @@ FEATURE_LABELS = {
     "diff_points_against": "Points allowed", "diff_point_diff": "Point differential", "diff_win": "Win %",
     "diff_form_point_diff": "Recent form: point diff", "diff_form_off_epa_per_play": "Recent form: offense EPA",
     "diff_form_def_epa_per_play": "Recent form: defense EPA", "diff_skill_missing": "Skill players missing",
-    "diff_skill_missing_top": "Biggest single absence", "diff_rest": "Rest days", "home_field": "Home field",
+    "diff_skill_missing_top": "Biggest single absence", "diff_def_missing": "Defensive playmakers missing", "diff_rest": "Rest days", "home_field": "Home field",
     "div_game": "Divisional game", "diff_prev_snaps": "Snaps last game", "diff_prev_def_snaps": "Defensive snaps last game",
     "diff_qb_weather_adj": "QB in bad weather", "diff_exp_pressure": "Pass rush matchup",
     "diff_blitz_matchup": "Blitz matchup",
@@ -87,11 +87,11 @@ def line_chart(df, x, y, color=None, color_scale=None, tooltip=None, y_title=Non
 
 
 def bar_chart(df, x, y, tooltip, color=BLUE, horizontal=False, y_title=None, x_title=None,
-              height=320, color_enc=None):
+              height=320, color_enc=None, x_format=None):
     mark = alt.Chart(df).mark_bar(cornerRadiusEnd=4, color=color)
     if horizontal:
         enc = dict(y=alt.Y(y, sort="-x", title=y_title, axis=alt.Axis(labelLimit=320, labelOverlap=False)),
-                   x=alt.X(x, title=x_title))
+                   x=alt.X(x, title=x_title, axis=alt.Axis(format=x_format) if x_format else alt.Axis()))
     else:
         enc = dict(x=x if isinstance(x, alt.X) else alt.X(x, title=x_title), y=alt.Y(y, title=y_title))
     if color_enc is not None:
@@ -387,9 +387,11 @@ if page == "This Week":
             out.append((txt, ":material/thunderstorm:", "blue"))
         m = missing[missing.game_id == r.game_id] if missing is not None else pd.DataFrame()
         for team in (r.away_team, r.home_team):
-            mt = m[m.team == team].sort_values("missing_value", ascending=False) if len(m) else m
-            if len(mt) and mt.missing_value.sum() >= 0.03:
-                out.append((f"{team} without {mt.iloc[0]['name']}", ":material/personal_injury:", "red"))
+            for unit in ("offense", "defense"):
+                mt = m[(m.team == team) & (m.get("unit", "offense") == unit)] if len(m) else m
+                mt = mt.sort_values("missing_value", ascending=False) if len(mt) else mt
+                if len(mt) and mt.missing_value.sum() >= 0.03:
+                    out.append((f"{team} without {mt.iloc[0]['name']}", ":material/personal_injury:", "red"))
         if r.neutral:
             out.append(("Neutral site", ":material/public:", "gray"))
         return out
@@ -492,10 +494,13 @@ if page == "This Week":
         st.dataframe(f[["factor", "effect", "detail"]], hide_index=True, use_container_width=True)
         m = missing[missing.game_id == detail] if missing is not None else pd.DataFrame()
         if len(m):
-            st.markdown("**Missing skill players**")
-            st.dataframe(m.sort_values("missing_value", ascending=False)[["team", "name", "position", "value", "missing_value"]],
-                         hide_index=True, use_container_width=True,
-                         column_config={"value": st.column_config.NumberColumn("usual share of touches", format="percent"),
+            st.markdown("**Missing players**")
+            cols_m = ["team", "unit", "name", "position", "value", "missing_value"] if "unit" in m else \
+                ["team", "name", "position", "value", "missing_value"]
+            st.dataframe(m.sort_values("missing_value", ascending=False)[cols_m], hide_index=True, use_container_width=True,
+                         column_config={"value": st.column_config.NumberColumn("usual share", format="percent",
+                                                                               help="offense: share of RB/WR/TE touches; "
+                                                                                    "defense: share of playmaking"),
                                         "missing_value": st.column_config.NumberColumn("missing share", format="percent")})
 
 # ================================================================ Overview
@@ -814,19 +819,27 @@ elif page == "Players":
     else:
         m = missing.merge(games[["game_id", "season", "week", "home_team", "away_team"]], on="game_id")
         m["opponent"] = np.where(m.team == m.home_team, m.away_team, m.home_team)
+        unit = st.radio("Unit", ["Offense (RB/WR/TE)", "Defense"], horizontal=True)
+        if "unit" in m:
+            m = m[m.unit == ("defense" if unit == "Defense" else "offense")]
         f1, f2 = st.columns(2)
         season = f1.selectbox("Season", sorted(m.season.unique(), reverse=True))
         team = f2.selectbox("Team", ["All teams"] + sorted(m.team.unique()))
         sm = m[m.season == season]
 
-        st.caption("**Role** = share of the team's RB/WR/TE targets + carries he usually gets. "
-                   "**Missing share** = role × how regularly he had been playing.")
+        if unit == "Defense":
+            st.caption("**Role** = share of the team's defensive playmaking he usually produces (sacks, interceptions, "
+                       "forced fumbles = 1; QB hits, tackles for loss, passes defended = ½). "
+                       "**Missing share** = role × how regularly he had been playing.")
+        else:
+            st.caption("**Role** = share of the team's RB/WR/TE targets + carries he usually gets. "
+                       "**Missing share** = role × how regularly he had been playing.")
         if team == "All teams":
             st.subheader(f"Biggest absences of {season}")
             top = sm.sort_values("missing_value", ascending=False).head(20)
             top["label"] = top.name + " (" + top.team + ", wk " + top.week.astype(str) + ")"
             st.altair_chart(bar_chart(top, "missing_value:Q", "label:N", horizontal=True,
-                                      x_title="Share of team touches missing", y_title=None, height=520,
+                                      x_title="Share of team role missing", y_title=None, height=520, x_format=".1%",
                                       tooltip=["name", "position", "team", "week", "opponent",
                                                alt.Tooltip("value:Q", format=".1%", title="role"),
                                                alt.Tooltip("participation:Q", format=".2f"),
@@ -837,7 +850,7 @@ elif page == "Players":
             weekly = tm.groupby("week").missing_value.sum().reindex(
                 sorted(games[(games.season == season) & ((games.home_team == team) | (games.away_team == team))]
                        .week.unique()), fill_value=0).rename("missing").reset_index()
-            st.subheader(f"{team} {season}: share of skill-player touches missing each week")
+            st.subheader(f"{team} {season}: share of {'defensive playmaking' if unit == 'Defense' else 'skill-player touches'} missing each week")
             st.altair_chart(bar_chart(weekly, "week:O", "missing:Q", x_title="Week", y_title="Missing share",
                                       tooltip=["week", alt.Tooltip("missing:Q", format=".1%")]),
                             use_container_width=True)

@@ -155,6 +155,7 @@ lean on last year and later weeks on current form.
 | Quarterback | starting QB's EPA/play and CPOE (career history weighted toward recent seasons, shrunk toward a replacement-level prior), experience, QB change flag |
 | QB in bad weather | the starting QB's own drop-off in bad weather beyond the league-wide drop, shrunk heavily; applied only in bad-weather games |
 | Skill players | share of the team's usual RB/WR/TE touches that is unavailable (injured, suspended, resting), and the biggest single absence |
+| Defensive playmakers | share of the team's usual defensive playmaking that is unavailable. Playmaking counts sacks, INTs and forced fumbles as 1, and QB hits, tackles for loss and passes defended as ½ |
 | Strength | Elo rating |
 | Situation | rest days, home-field advantage (trailing 3-season league home margin, 0 at neutral sites), divisional game |
 | Fatigue | defensive snaps last game, defensive snaps per game over the last 3 games, defensive snaps in overtime last game, overtime last game, consecutive road games |
@@ -175,7 +176,7 @@ Log loss is the main metric (lower is better) because the goal is accurate proba
 | Holdout 2019–2025 (1,954 games) | Accuracy | Log loss | Brier |
 |---|---|---|---|
 | Vegas moneyline (benchmark) | 0.664 | 0.6083 | 0.2105 |
-| **Logistic regression (final)** | **0.652** | **0.6269** | **0.2184** |
+| **Logistic regression (final)** | **0.655** | **0.6239** | **0.2171** |
 | Random forest | 0.647 | 0.6286 | 0.2194 |
 | Gradient boosting | 0.639 | 0.6300 | 0.2202 |
 | Elo | 0.638 | 0.6367 | 0.2227 |
@@ -216,6 +217,17 @@ The model also predicts a point spread with a separate margin model: symmetric r
 - **Vegas's spread is more accurate,** and on the holdout our spread does not beat the line. Break-even at −110 odds is 52.4%. The tuning-season 57% was luck.
 - **Cover probabilities are calibrated on the tuning seasons.** Disagreeing with Vegas is worth little: a 3-point gap means about a 53% chance to cover. Most games therefore show a 50–55% cover chance, which is the honest answer.
 - **Live 2026 record:** our spread and the Vegas line are recorded before kickoff in `reports/live_tracking.csv`, and `python -m src.track` prints the record against the spread.
+
+### Defensive availability
+
+This uses the same approach as skill players, applied to defenders (DL/LB/DB). A player's role is his share of the team's defensive playmaking, and the feature is the share of that playmaking that is unavailable.
+
+| | Log loss |
+|---|---|
+| Tuning 2012–18: before → with missing defenders | 0.61454 → **0.61407** |
+| **Holdout 2019–25: before → with missing defenders** | 0.6269 → **0.6239**, the biggest holdout gain of any single addition |
+
+Its weight (−0.096 per standard deviation) is larger than the skill-player feature's (−0.065). The biggest 2025 playmakers it identifies are Maxx Crosby, Ed Oliver, Brian Burns, Myles Garrett, Nick Bosa and Aidan Hutchinson. Absences it caught include Crosby's shutdown in weeks 17–18, Micah Parsons' December absence and T.J. Watt's week-15 absence.
 
 ### Matchup features
 

@@ -9,7 +9,7 @@ import pytest
 
 import src.features as features
 from src.config import PROCESSED_DIR
-from src.features import FEATURE_COLUMNS, MATCHUP_FEATURES, build_game_features
+from src.features import DEF_AVAILABILITY_FEATURES, FEATURE_COLUMNS, MATCHUP_FEATURES, build_game_features
 
 CUTOFFS = ["2012-11-04", "2019-09-15", "2023-12-10", "2025-10-05"]
 
@@ -48,6 +48,15 @@ def test_features_ignore_future(team_games, full, cutoff, monkeypatch):
         log.loc[day[day <= cutoff] == cutoff, "value"] = np.nan
         return log, rosters, outs
 
+    real_def = features.load_def_inputs
+
+    def hidden_def():
+        log, rosters = real_def()
+        day = log.game_id.map(team_games.drop_duplicates("game_id").set_index("game_id").gameday)
+        log = log[day <= cutoff].copy()
+        log.loc[day[day <= cutoff] == cutoff, "value"] = np.nan
+        return log, rosters
+
     real_matchups = features.load_matchup_inputs
 
     def hidden_matchups():
@@ -58,9 +67,10 @@ def test_features_ignore_future(team_games, full, cutoff, monkeypatch):
     monkeypatch.setattr(features, "load_schedules", hidden_schedule)
     monkeypatch.setattr(features, "load_player_inputs", hidden_players)
     monkeypatch.setattr(features, "load_matchup_inputs", hidden_matchups)
+    monkeypatch.setattr(features, "load_def_inputs", hidden_def)
     truncated = build_game_features(team_games[team_games.gameday < cutoff])
 
-    cols = FEATURE_COLUMNS + MATCHUP_FEATURES
+    cols = FEATURE_COLUMNS + MATCHUP_FEATURES + DEF_AVAILABILITY_FEATURES
     day = full[full.gameday == cutoff].set_index("game_id")[cols]
     assert len(day) > 0, "pick a cutoff that is a game day"
     again = truncated.set_index("game_id").loc[day.index, cols]

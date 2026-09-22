@@ -40,6 +40,7 @@ GROUPS = {
     "Recent form": ["diff_form_point_diff", "diff_form_off_epa_per_play", "diff_form_def_epa_per_play"],
     "Elo rating": ["diff_elo"],
     "Missing skill players": ["diff_skill_missing", "diff_skill_missing_top"],
+    "Missing defenders": ["diff_def_missing", "diff_def_missing_top"],
     "Rest": ["diff_rest"],
     "Fatigue": ["diff_prev_def_snaps", "diff_def_snap_load", "diff_prev_def_ot_snaps", "diff_prev_ot",
                 "diff_road_streak", "diff_prev_snaps", "diff_snap_load"],
@@ -108,14 +109,17 @@ def _details(row: pd.Series, missing: pd.DataFrame) -> Dict[str, str]:
     fat.append(f"defensive snaps/game, last 3: {h} {row.home_def_snap_load:.0f} vs {a} {row.away_def_snap_load:.0f}")
     d["Fatigue"] = "; ".join(fat)
     if missing is not None:
-        m = missing[missing.game_id == row.game_id].sort_values("missing_value", ascending=False)
-        parts = []
-        for team in (h, a):
-            names = [f"{r['name']} ({r['position']})" for _, r in m[m.team == team].head(3).iterrows()]
-            share = m[m.team == team].missing_value.sum()
-            if names:
-                parts.append(f"{team} without {', '.join(names)} ({share:.0%} of touches)")
-        d["Missing skill players"] = "; ".join(parts) if parts else "no notable absences"
+        m_all = missing[missing.game_id == row.game_id].sort_values("missing_value", ascending=False)
+        for unit, key, what in (("offense", "Missing skill players", "touches"),
+                                ("defense", "Missing defenders", "defensive playmaking")):
+            m = m_all[m_all.unit == unit] if "unit" in m_all else (m_all if unit == "offense" else m_all.iloc[0:0])
+            parts = []
+            for team in (h, a):
+                names = [f"{r['name']} ({r['position']})" for _, r in m[m.team == team].head(3).iterrows()]
+                share = m[m.team == team].missing_value.sum()
+                if names:
+                    parts.append(f"{team} without {', '.join(names)} ({share:.0%} of {what})")
+            d[key] = "; ".join(parts) if parts else "no notable absences"
     return d
 
 

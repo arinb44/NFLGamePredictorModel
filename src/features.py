@@ -22,7 +22,8 @@ import pandas as pd
 from src.config import CURRENT_SEASON, FIRST_SEASON, PROCESSED_DIR
 from src.data_loader import load_player_stats, load_schedules
 from src.elo import compute_elo
-from src.players import load_report_outs, load_roster_status, load_skill_log, skill_availability
+from src.players import (load_def_log, load_def_roster_status, load_report_outs, load_roster_status,
+                         load_skill_log, skill_availability)
 from src.matchups import blitz_vulnerability, load_dropbacks, qb_split_sensitivity, qb_weather_sensitivity
 from src.situational import load_game_weather, situational_features
 from src.venues import game_venues
@@ -65,6 +66,7 @@ TEAM_STATS = [
     "points_for", "points_against", "point_diff", "win",
 ]
 FORM_STATS = ["point_diff", "off_epa_per_play", "def_epa_per_play"]
+DEF_AVAILABILITY_FEATURES = ["diff_def_missing", "diff_def_missing_top"]
 # 3rd/4th-down conversion rates (offense) and allowed (defense), rolled like the other team stats.
 DOWN_STATS = ["off_third_rate", "def_third_rate", "off_fourth_rate", "def_fourth_rate"]
 DOWN_FEATURES = [f"diff_{c}" for c in DOWN_STATS]
@@ -179,6 +181,16 @@ def load_player_inputs():
 
 
 @lru_cache(maxsize=1)
+def _def_inputs():
+    """(defender log, defensive roster status). Cached."""
+    return load_def_log(), load_def_roster_status()
+
+
+def load_def_inputs():
+    return _def_inputs()
+
+
+@lru_cache(maxsize=1)
 def _matchup_inputs():
     return load_dropbacks()
 
@@ -201,6 +213,11 @@ def build_team_features(tg: pd.DataFrame, p: FeatureParams = FeatureParams()) ->
     log, rosters, outs = load_player_inputs()
     skill = skill_availability(tg, log, rosters, outs, p.player_decay, p.player_season_decay,
                                p.player_prior_games, p.part_decay, p.part_season_decay)
+    dlog, drosters = load_def_inputs()
+    defense = skill_availability(tg, dlog, drosters, outs, p.player_decay, p.player_season_decay,
+                                 p.player_prior_games, p.part_decay, p.part_season_decay)
+    defense.columns = ["def_missing", "def_missing_top"]
+    skill = pd.concat([skill, defense], axis=1)
     feats = pd.concat([tg[["game_id", "team", "season", "gameday", "rest"]], roll, form, pressure, downs, qb,
                        skill], axis=1)
     feats["qb_changed"] = _qb_changed(tg)
@@ -393,8 +410,10 @@ MATCHUP_FEATURES = ["diff_qb_weather_adj", "diff_exp_pressure", "diff_blitz_matc
 # slightly worse, 0.6283 vs 0.6278, within noise); expected
 # pressure did not (the sack-rate features already cover it); blitz data starts in
 # 2022, so it can't be tested on the tuning seasons and is kept out for now.
-FEATURE_COLUMNS = BASE_FEATURES + FATIGUE_FEATURES + ["diff_qb_weather_adj"]
-ALL_FEATURES = BASE_FEATURES + FATIGUE_FEATURES + TRAVEL_FEATURES + WEATHER_FEATURES + ["diff_qb_weather_adj"]
+# Missing defensive playmakers improved the tuning seasons (0.61407 vs 0.61454).
+FEATURE_COLUMNS = BASE_FEATURES + FATIGUE_FEATURES + ["diff_qb_weather_adj", "diff_def_missing"]
+ALL_FEATURES = (BASE_FEATURES + FATIGUE_FEATURES + TRAVEL_FEATURES + WEATHER_FEATURES
+                + ["diff_qb_weather_adj", "diff_def_missing"])
 
 
 def rebuild(qb_overrides=None, save: bool = True, assume_backups: bool = False):
@@ -419,6 +438,11 @@ def rebuild(qb_overrides=None, save: bool = True, assume_backups: bool = False):
     _, details = skill_availability(tg_all, log, rosters, outs, params.player_decay,
                                     params.player_season_decay, params.player_prior_games,
                                     params.part_decay, params.part_season_decay, return_details=True)
+    dlog, drosters = load_def_inputs()
+    _, ddet = skill_availability(tg_all, dlog, drosters, outs, params.player_decay,
+                                 params.player_season_decay, params.player_prior_games,
+                                 params.part_decay, params.part_season_decay, return_details=True)
+    details = pd.concat([details.assign(unit="offense"), ddet.assign(unit="defense")], ignore_index=True)
     if save:
         games.to_parquet(PROCESSED_DIR / "games_features.parquet", index=False)
         details.to_parquet(PROCESSED_DIR / "missing_players.parquet", index=False)
