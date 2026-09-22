@@ -10,7 +10,7 @@
   <key>ProgramArguments</key>
   <array>
     <string>/bin/zsh</string>
-    <string>/Users/arins/Documents/Projects/NFLModels/gamePredictorModel/scripts/weekly_run.sh</string>
+    <string>/Users/arins/Projects/NFLGamePredictorModel/scripts/weekly_run.sh</string>
   </array>
   <key>StartCalendarInterval</key>
   <array>
@@ -18,8 +18,8 @@
     <dict><key>Weekday</key><integer>0</integer><key>Hour</key><integer>11</integer><key>Minute</key><integer>0</integer></dict>
     <dict><key>Weekday</key><integer>1</integer><key>Hour</key><integer>12</integer><key>Minute</key><integer>0</integer></dict>
   </array>
-  <key>StandardOutPath</key><string>/Users/arins/Documents/Projects/NFLModels/gamePredictorModel/logs/weekly_run.log</string>
-  <key>StandardErrorPath</key><string>/Users/arins/Documents/Projects/NFLModels/gamePredictorModel/logs/weekly_run.log</string>
+  <key>StandardOutPath</key><string>/Users/arins/Projects/NFLGamePredictorModel/logs/weekly_run.log</string>
+  <key>StandardErrorPath</key><string>/Users/arins/Projects/NFLGamePredictorModel/logs/weekly_run.log</string>
   <key>RunAtLoad</key><false/>
 </dict>
 </plist>
