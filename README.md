@@ -94,6 +94,8 @@ KC @ MIA  (Sun Sep 27)
     MIA + 5.9%  Fatigue                KC played OT last game (4 defensive OT snaps); defensive snaps/game, last 3: MIA 56 vs KC 54
 ```
 
+Each game also prints a spread line, e.g. `Spread: model KC -3.5 | Vegas KC -11.5 | MIA covers 58%`.
+
 `--qb KC="Justin Fields"` shows how much the Mahomes-to-backup drop is worth.
 
 **How the explanation works:** the model is a sum, `log-odds = Σ weight × feature`, with no intercept. Every feature is a home-minus-away difference, so evenly matched teams at a neutral site start at exactly 50%, and each factor's push is exact. Related features, such as offensive EPA and success rate, are summed into groups (Quarterback, Offense, Defense, Missing skill players, Home field, Rest, Fatigue…) because the model's split of credit between overlapping features is arbitrary. Each group's number is its step in a **waterfall**: start at 50%, add groups one at a time (largest first), and record how far each moves the probability. The steps add up exactly to the final probability. `tests/test_explain.py` checks that the factors add up exactly to the model's probability.
