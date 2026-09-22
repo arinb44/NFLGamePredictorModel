@@ -7,8 +7,10 @@ For each team's next game:
   final 5+ dropbacks)  ->  "left_early": a warning only (could be an injury or
   a blowout benching), with the suggested backup.
 
-The backup is the top QB on the latest depth chart other than the listed
-starter (depth charts update daily), otherwise the QB who finished that game.
+The backup must itself be available (not Out/Doubtful, reserve or inactive).
+Preference: the available QB who took most of the team's dropbacks in its last
+game, then the latest depth chart order. Depth charts don't always reflect
+injuries (in 2026 Atlanta's listed QB1 and QB2 were both inactive).
 """
 import pandas as pd
 
@@ -81,13 +83,26 @@ def qb_availability(sched: pd.DataFrame, season: int = CURRENT_SEASON) -> pd.Dat
                         reason = (f"left week {last.week.max()} early: {top.index[0][1]} took the team's "
                                   f"last {len(after)} dropbacks (injury or benching?)")
         if status != "ok":
-            others = dc[(dc.team == r.team) & (dc.gsis_id != r.qb_id)]
-            if len(others):
-                backup_id, backup_name = others.gsis_id.iloc[0], others.player_name.iloc[0]
-            elif finisher:
-                backup_id = finisher[0]
-                pretty = ros[ros.gsis_id == backup_id].full_name
-                backup_name = pretty.iloc[-1] if len(pretty) else finisher[1]
+            def available(pid):
+                rep_ = inj[(inj.team == r.team) & (inj.week == r.week) & (inj.gsis_id == pid)]
+                if len(rep_) and rep_.report_status.iloc[-1] in OUT_REPORT:
+                    return False
+                st = ros_latest[(ros_latest.team == r.team) & (ros_latest.gsis_id == pid)]
+                return not (len(st) and st.status.iloc[-1] in OUT_STATUSES)
+
+            candidates = []
+            if len(team_drops):  # who actually ran the offense in the last game
+                last = team_drops[team_drops.week == team_drops.week.max()]
+                candidates += list(last.groupby("qb_id").size().sort_values(ascending=False).index)
+            candidates += list(dc[dc.team == r.team].gsis_id)
+            for pid in candidates:
+                if pid != r.qb_id and isinstance(pid, str) and available(pid):
+                    backup_id = pid
+                    break
+            if backup_id is not None:
+                names = ros[ros.gsis_id == backup_id].full_name
+                dnames = dc[dc.gsis_id == backup_id].player_name
+                backup_name = names.iloc[-1] if len(names) else (dnames.iloc[0] if len(dnames) else backup_id)
         out.append({"game_id": r.game_id, "week": r.week, "team": r.team, "qb_id": r.qb_id, "qb_name": r.qb_name,
                     "status": status, "reason": reason, "backup_id": backup_id, "backup_name": backup_name})
     return pd.DataFrame(out)
