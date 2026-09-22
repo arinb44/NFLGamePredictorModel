@@ -41,7 +41,7 @@ if not (PROCESSED_DIR / "games_features.parquet").exists() or HOSTED_MARKER.exis
 # for color-vision deficiency). Blue <-> red is the diverging pair.
 BLUE, ORANGE, AQUA = "#2a78d6", "#eb6834", "#1baf7a"
 RED, GRAY = "#e34948", "#8a8984"
-TEXT_2, GRID = "#52514e", "#e8e7e3"
+TEXT_2, GRID = "#b5b3ad", "#2a2a2e"
 FEATURE_LABELS = {
     "diff_qb_epa": "QB EPA per play", "diff_qb_cpoe": "QB completion % over expected",
     "diff_qb_experience": "QB experience", "diff_qb_changed": "QB change from last game",
@@ -153,7 +153,7 @@ def team_scatter(df, x, y, x_title, y_title, focus, x_fmt="%", y_fmt="%", revers
         y=alt.Y(f"{y}:Q", title=y_title, axis=alt.Axis(format=y_fmt),
                 scale=alt.Scale(zero=False, padding=24, reverse=reverse_y)),
         tooltip=tooltip or ["team"])
-    dots = base.mark_circle(size=90, stroke="white", strokeWidth=1).encode(
+    dots = base.mark_circle(size=90, stroke="black", strokeWidth=1).encode(
         color=alt.Color("group:N", legend=None, scale=alt.Scale(domain=["Selected team", "Other teams"],
                                                                 range=[ORANGE, BLUE])),
         size=alt.condition(alt.datum.group == "Selected team", alt.value(220), alt.value(90)))
@@ -281,7 +281,7 @@ def waterfall_chart(e, home, away, height=None):
         x2="end:Q",
         color=alt.Color("kind:N", legend=alt.Legend(title=None),
                         scale=alt.Scale(domain=[f"Pushes toward {home}", f"Pushes toward {away}", "Model probability"],
-                                        range=[BLUE, RED, "#52514e"])),
+                                        range=[BLUE, RED, "#c9c7c1"])),
         tooltip=["factor", alt.Tooltip("start:Q", format=".1%", title="from"),
                  alt.Tooltip("end:Q", format=".1%", title="to"), "detail"])
     labels = alt.Chart(w).mark_text(align="left", dx=5, fontSize=11, color=TEXT_2).encode(
@@ -297,7 +297,7 @@ def prob_bar(home, away, p_home, p_vegas=None):
     tick = ""
     if p_vegas is not None and p_vegas == p_vegas:
         tick = (f'<div title="Vegas" style="position:absolute;top:-4px;bottom:-4px;left:calc({(1 - p_vegas) * 100:.1f}% - 1.5px);'
-                f'width:3px;background:#0b0b0b;border-radius:2px"></div>')
+                f'width:3px;background:#ffffff;border-radius:2px;box-shadow:0 0 0 1px #000"></div>')
     seg = 'display:flex;align-items:center;white-space:nowrap;overflow:hidden'
     left = f"{away} {a:.0f}%" if a >= 14 else ""
     right = f"{home} {h:.0f}%" if h >= 14 else ""
@@ -423,7 +423,7 @@ if page == "This Week":
         st.header(f"{cur} — " + (f"Week {week}" if week <= 18 else "Playoffs"))
         n_up = int((~played_now).sum())
         st.caption(f"{len(wg)} games · {n_up} still to play. Bars show the model's win probability "
-                   f"(orange = away, blue = home); the black tick is Vegas. Played games show the probability recorded "
+                   f"(orange = away, blue = home); the white tick is Vegas. Played games show the probability recorded "
                    f"before kickoff.")
         cols = st.columns(2)
         for i, r in wg.iterrows():
@@ -822,7 +822,7 @@ elif page == "Games":
     if len(s):
         s["matchup"] = s.away_team + " @ " + s.home_team
         s["outcome"] = np.where(s.home_win == 1, "Home won", "Away won")
-        pts = alt.Chart(s).mark_circle(size=70, opacity=0.75, stroke="white", strokeWidth=1).encode(
+        pts = alt.Chart(s).mark_circle(size=70, opacity=0.75, stroke="black", strokeWidth=1).encode(
             x=alt.X("p_vegas:Q", title="Vegas home win probability", scale=alt.Scale(domain=[0, 1])),
             y=alt.Y("p_home:Q", title="Model home win probability", scale=alt.Scale(domain=[0, 1])),
             color=alt.Color("outcome:N", scale=alt.Scale(domain=["Home won", "Away won"], range=[BLUE, ORANGE]),
@@ -1027,7 +1027,7 @@ elif page == "Matchups":
                 scale=alt.Scale(zero=False, padding=20)),
         tooltip=["team", alt.Tooltip("allowed:Q", format=".1%", title="offense hit/sacked"),
                  alt.Tooltip("generated:Q", format=".1%", title="defense hit/sack"), "games"])
-    dots = base.mark_circle(size=90, stroke="white", strokeWidth=1).encode(
+    dots = base.mark_circle(size=90, stroke="black", strokeWidth=1).encode(
         color=alt.Color("group:N", legend=None,
                         scale=alt.Scale(domain=[focus, "Other teams"], range=[ORANGE, BLUE])))
     names = base.mark_text(dy=-10, fontSize=10, color=TEXT_2).encode(text="team:N")
