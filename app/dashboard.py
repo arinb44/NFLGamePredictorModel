@@ -297,8 +297,8 @@ st.title("NFL Win Probability Model")
 st.caption("Pregame win probabilities from team efficiency, quarterbacks, player availability, "
            "travel, fatigue and weather. Data: nflverse, Open-Meteo.")
 
-page = st.sidebar.radio("Section", ["This Week", "Overview", "Teams", "Team Analytics", "Games", "Players",
-                                    "Situational", "Matchups", "Model"])
+page = st.sidebar.selectbox("Section", ["This Week", "Overview", "Teams", "Team Analytics", "Games", "Players",
+                                        "Situational", "Matchups", "Model"])
 
 # ================================================================ This Week
 if page == "This Week":
