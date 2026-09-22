@@ -198,6 +198,12 @@ Random forest and gradient boosting were tuned on the tuning seasons with all fe
 - **Blending doesn't help.** Tree predictions correlate 0.94–0.97 with the logistic regression's, so they add noise rather than new information.
 - **The logistic regression is also the easiest model to explain,** since each factor's contribution can be read directly from its weight.
 
+### When the model and Vegas disagree
+
+In 2012–2025 games where Vegas liked the favorite 15+ points more than the model did, the favorite won **60.3%**. Vegas had said 66.0% and the model 46.5%. The truth usually lands between the two, closer to Vegas. The model deliberately regresses teams toward average, which is right on average but too cautious for truly elite teams, and it can't see daily news. The dashboard shows this note on games with big disagreements.
+
+**Overtime:** teams coming off an overtime game underperformed a model without OT features by 8.5 points in 2008–2016, but only 2.7 (±3.3) in 2019–2025. The model's OT penalty, about 4.5 points in a typical case, sits between the two and is statistically consistent with both. Weighting recent seasons more heavily in training was tested and made the tuning seasons worse at every setting.
+
 ### Point spreads
 
 The model also predicts a point spread with a separate margin model: symmetric ridge regression on the same features, with its strength chosen on the tuning seasons by margin error. The Vegas spread is still only a benchmark, never an input.

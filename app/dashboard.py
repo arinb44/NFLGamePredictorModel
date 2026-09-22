@@ -467,6 +467,18 @@ if page == "This Week":
         b = badges(r)
         if b:
             st.markdown(" ".join(f":{c}-badge[{ic} {t}]" for t, ic, c in b))
+        if r.p_vegas == r.p_vegas and abs(r.p_show - r.p_vegas) >= 0.10:
+            fav = r.home_team if r.p_vegas >= 0.5 else r.away_team
+            model_lower_on_fav = (r.p_vegas >= 0.5) == (r.p_show < r.p_vegas)
+            if model_lower_on_fav:
+                st.info(f"**The model is much lower on {fav} than Vegas.** In past games like this (2012–2025, Vegas "
+                        f"15+ points higher on the favorite), the favorite won 60% of the time: Vegas said 66%, the model "
+                        f"46%. The truth usually lands between the two, closer to Vegas. The model deliberately regresses "
+                        f"teams toward average and can't see things like daily injury news.", icon=":material/info:")
+            else:
+                st.info(f"**The model is much higher on {fav} than Vegas.** When the model likes the favorite more than "
+                        f"Vegas does, the favorite has won about as often as Vegas implied, so lean toward the Vegas number.",
+                        icon=":material/info:")
         st.subheader("How the prediction is built")
         st.caption(f"Starts at 50% (evenly matched teams at a neutral site). Each bar adds one factor, biggest first, "
                    f"and the last bar is the model's probability for {r.home_team}. Hover a bar for the numbers behind it.")
