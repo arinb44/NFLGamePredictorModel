@@ -308,3 +308,7 @@ Each group was added separately and kept only if it improved log loss on the tun
 - [x] Random forest and gradient boosting, plus calibration and ensembles (logistic regression kept)
 - [x] Per-game factor explanations and prediction CLI (with QB what-ifs)
 - [x] Matchup features: QB weather sensitivity (in the model), pass protection vs. pass rush (not helpful), blitz vulnerability (live 2026 test running)
+- [x] QB availability checks, current-season weighting, defensive playmaker availability
+- [x] Point spreads, team analytics (3rd/4th downs, man vs. zone), This Week page with waterfall explanations
+- [ ] End of the 2026 regular season: apply the pre-set blitz rule (`python -m src.track`) and review the live record against the spread
+- [ ] After nflverse publishes 2026 coverage data: `python -m src.coverage`
