@@ -19,3 +19,6 @@ models/*.pkl
 
 # Local tool config
 .claude/
+
+# Automation logs
+logs/

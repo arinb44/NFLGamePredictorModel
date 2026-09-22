@@ -29,8 +29,11 @@ def refresh_data():
     from src.config import PROCESSED_DIR
 
     data_loader.load_schedules(refresh=True)
-    for kind in ("pbp", "player_stats", "rosters", "injuries"):
-        data_loader._season_file(kind, CURRENT_SEASON, refresh=True)
+    for kind in ("pbp", "player_stats", "rosters", "injuries", "depth_charts", "ftn"):
+        try:
+            data_loader._season_file(kind, CURRENT_SEASON, refresh=True)
+        except Exception as exc:  # e.g. a file not published yet this week
+            print(f"  could not refresh {kind}: {exc}")
     build_team_games().to_parquet(PROCESSED_DIR / "team_games.parquet", index=False)
 
 

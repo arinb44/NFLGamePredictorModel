@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Pregame predictions: Thu 12:00, Sun 11:00, Mon 12:00 (local time, US Eastern).
+     Install: cp scripts/com.nflpredictor.weekly.plist ~/Library/LaunchAgents/ &&
+              launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.nflpredictor.weekly.plist
+     If the Mac is asleep at a scheduled time, the run happens when it wakes. -->
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>com.nflpredictor.weekly</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/zsh</string>
+    <string>/Users/arins/Documents/Projects/NFLModels/gamePredictorModel/scripts/weekly_run.sh</string>
+  </array>
+  <key>StartCalendarInterval</key>
+  <array>
+    <dict><key>Weekday</key><integer>4</integer><key>Hour</key><integer>12</integer><key>Minute</key><integer>0</integer></dict>
+    <dict><key>Weekday</key><integer>0</integer><key>Hour</key><integer>11</integer><key>Minute</key><integer>0</integer></dict>
+    <dict><key>Weekday</key><integer>1</integer><key>Hour</key><integer>12</integer><key>Minute</key><integer>0</integer></dict>
+  </array>
+  <key>StandardOutPath</key><string>/Users/arins/Documents/Projects/NFLModels/gamePredictorModel/logs/weekly_run.log</string>
+  <key>StandardErrorPath</key><string>/Users/arins/Documents/Projects/NFLModels/gamePredictorModel/logs/weekly_run.log</string>
+  <key>RunAtLoad</key><false/>
+</dict>
+</plist>
