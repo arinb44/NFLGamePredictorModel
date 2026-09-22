@@ -5,6 +5,7 @@ Usage:
     python -m src.train                 # evaluate + save logistic regression
 """
 import argparse
+import json
 import warnings
 
 import joblib
@@ -91,7 +92,24 @@ if __name__ == "__main__":
     # earlier seasons) - used by the dashboard.
     oos = walk_forward(games, *MODELS[args.final], range(TUNING.start, HOLDOUT.stop))
     oos = oos.merge(baseline_predictions(games), on="game_id")
+
+    # Spreads: out-of-sample predicted margins, final spread model, and a report.
+    from src.spread import SPREAD_ALPHA, fit_spread_model, margin_model, spread_report, walk_forward_margin
+    sched = pd.read_parquet(ROOT / "data" / "raw" / "schedules.parquet")[["game_id", "result"]]
+    gm = games.merge(sched, on="game_id")
+    wf = walk_forward_margin(gm, lambda: margin_model(SPREAD_ALPHA), FEATURE_COLUMNS,
+                             range(TUNING.start, HOLDOUT.stop))
+    oos = oos.merge(wf[["game_id", "pred_margin"]], on="game_id", how="left")
     oos.to_parquet(PROCESSED_DIR / "oos_predictions.parquet", index=False)
+    d = gm[["game_id", "season", "result", "spread_line"]].merge(wf[["game_id", "pred_margin"]], on="game_id")
+    spread_rep = {label: spread_report(d[d.season.isin(list(seasons))], "pred_margin", (0, 1.5, 3.0, 5.0))
+                  for label, seasons in (("tuning 2012-18", TUNING), ("holdout 2019-25", HOLDOUT))}
+    (ROOT / "reports" / "spread_results.json").write_text(json.dumps(spread_rep, indent=2))
+    sb = fit_spread_model(gm, FEATURE_COLUMNS)
+    joblib.dump(sb, MODELS_DIR / "spread.joblib")
+    h = spread_rep["holdout 2019-25"]
+    print(f"Spread model: holdout RMSE {h['rmse_model']:.2f} vs Vegas {h['rmse_vegas']:.2f}; "
+          f"ATS all games {h['ats_edge>0'][0]}-{h['ats_edge>0'][1]}; cover calibration k={sb['cover_k']:.4f}")
 
     model, path = fit_final(games, args.final)
     print(f"\nSaved {args.final} trained on {len(games):,} games to {path}")

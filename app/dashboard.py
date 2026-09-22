@@ -215,6 +215,14 @@ def load_model(version):
     return joblib.load(MODELS_DIR / "logistic.joblib")
 
 
+@st.cache_resource
+def load_spread(version):
+    import joblib
+    from src.config import MODELS_DIR
+    p = MODELS_DIR / "spread.joblib"
+    return joblib.load(p) if p.exists() else None
+
+
 @st.cache_data
 def team_meta():
     from src.data_loader import load_teams
@@ -317,14 +325,35 @@ if page == "This Week":
 
     # Played games show the probability recorded before kickoff; upcoming games the current model.
     live_p = bundle["model"].predict_proba(wg[bundle["features"]])[:, 1]
+    from src.track import _load as load_tracking
     try:
-        from src.track import _load as load_tracking
         tracked = load_tracking().set_index("game_id").p_logistic
     except Exception:
         tracked = pd.Series(dtype=float)
     played_now = wg.home_score.notna()
     wg["p_show"] = np.where(played_now, wg.game_id.map(tracked).fillna(pd.Series(live_p)), live_p)
     exps = {e["game_id"]: e for e in explain(bundle, wg, missing, top=20)}
+    from src.spread import cover_prob_calibrated, fmt_spread
+    sp_path = MODELS_DIR / "spread.joblib"
+    sp = load_spread(sp_path.stat().st_mtime) if sp_path.exists() else None
+    if sp is not None:
+        live_margin = sp["model"].predict(wg[sp["features"]])
+        tracked_margin = load_tracking().set_index("game_id").pred_margin if "pred_margin" in load_tracking() else pd.Series(dtype=float)
+        wg["margin"] = np.where(played_now, wg.game_id.map(tracked_margin).fillna(pd.Series(live_margin)), live_margin)
+        wg["p_cover"] = np.where(wg.spread_line.notna(),
+                                 cover_prob_calibrated(wg.margin, wg.spread_line.fillna(0), sp["cover_k"]), np.nan)
+    else:
+        wg["margin"], wg["p_cover"] = np.nan, np.nan
+
+    def spread_line_txt(r):
+        if r.margin != r.margin:
+            return ""
+        txt = f"Spread: model **{fmt_spread(r.home_team, r.away_team, r.margin)}**"
+        if r.spread_line == r.spread_line:
+            txt += f" · Vegas **{fmt_spread(r.home_team, r.away_team, r.spread_line)}**"
+            side, ps = (r.home_team, r.p_cover) if r.p_cover >= 0.5 else (r.away_team, 1 - r.p_cover)
+            txt += f" · {side} covers {ps:.0%}"
+        return txt
 
     detail = st.session_state.get("detail_game")
     if detail not in set(wg.game_id):
@@ -387,10 +416,18 @@ if page == "This Week":
                     winner = r.home_team if r.home_score > r.away_score else r.away_team
                     pick = r.home_team if r.p_show >= 0.5 else r.away_team
                     mark = "✓" if winner == pick else "✗"
+                    ats = ""
+                    if r.margin == r.margin and r.spread_line == r.spread_line:
+                        diff = (r.home_score - r.away_score) - r.spread_line
+                        side = r.home_team if r.margin > r.spread_line else r.away_team
+                        ok = (diff > 0) if r.margin > r.spread_line else (diff < 0)
+                        ats = " · spread: push" if diff == 0 else f" · spread pick {side} {'✓' if ok else '✗'}"
                     st.caption(f"**Final: {r.away_team} {r.away_score:.0f} – {r.home_team} {r.home_score:.0f}** "
-                               f"(model picked {pick} {mark}) · {vegas_txt}")
+                               f"(model picked {pick} {mark}{ats}) · {vegas_txt}")
                 else:
                     st.caption(vegas_txt)
+                if spread_line_txt(r):
+                    st.caption(spread_line_txt(r))
                 b = badges(r)
                 if b:
                     st.markdown(" ".join(f":{c}-badge[{ic} {t}]" for t, ic, c in b))
@@ -418,6 +455,15 @@ if page == "This Week":
             c3.metric(f"Vegas: {r.home_team}", f"{r.p_vegas:.1%}", f"{(r.p_show - r.p_vegas) * 100:+.1f} pts model vs Vegas",
                       delta_color="off")
         st.markdown(prob_bar(r.home_team, r.away_team, r.p_show, r.p_vegas), unsafe_allow_html=True)
+        if r.margin == r.margin:
+            s1, s2, s3 = st.columns(3)
+            s1.metric("Model spread", fmt_spread(r.home_team, r.away_team, r.margin))
+            s2.metric("Vegas spread", fmt_spread(r.home_team, r.away_team, r.spread_line))
+            if r.p_cover == r.p_cover:
+                side, ps = (r.home_team, r.p_cover) if r.p_cover >= 0.5 else (r.away_team, 1 - r.p_cover)
+                s3.metric(f"{side} covers", f"{ps:.0%}")
+            st.caption("Cover chances are calibrated on 2012–2018: historically, disagreeing with Vegas has been worth "
+                       "little (a 3-point gap ≈ 53%), and on 2019–2025 the model's spread did not beat the line.")
         b = badges(r)
         if b:
             st.markdown(" ".join(f":{c}-badge[{ic} {t}]" for t, ic, c in b))
@@ -1045,6 +1091,30 @@ elif page == "Model":
                                        color_scale=MODEL_COLORS, y_title="Log loss", x_title="Season",
                                        tooltip=["season", "model", alt.Tooltip("log_loss:Q", format=".4f")],
                                        height=380), use_container_width=True)
+
+        st.subheader("Spreads: model vs. Vegas")
+        sp_rep_path = ROOT / "reports" / "spread_results.json"
+        if sp_rep_path.exists():
+            sr = json.loads(sp_rep_path.read_text())
+            rows_s = []
+            for period, v in sr.items():
+                row = {"period": period, "games": v["games"], "model error (RMSE)": round(v["rmse_model"], 2),
+                       "Vegas error (RMSE)": round(v["rmse_vegas"], 2)}
+                for key, label in [("ats_edge>0", "ATS: all games"), ("ats_edge>3.0", "ATS: 3+ pt disagreement"),
+                                   ("ats_edge>5.0", "ATS: 5+ pt disagreement")]:
+                    w, l, pct = v[key]
+                    row[label] = f"{w}-{l} ({pct:.1%})"
+                rows_s.append(row)
+            st.dataframe(pd.DataFrame(rows_s), hide_index=True, use_container_width=True)
+            st.caption("Error = how far the predicted margin misses the final margin, in points. ATS = record picking "
+                       "the side our spread favors against the Vegas line (break-even at -110 odds is 52.4%). "
+                       "The tuning seasons chose the spread model; the holdout is the honest test. "
+                       "Vegas's spread is more accurate, and the holdout ATS record is about 50%.")
+        from src.track import ats_record
+        a = ats_record()
+        if a.get("games"):
+            st.caption(f"Live {int(games.season.max())} record against the spread (recorded before kickoff): "
+                       f"**{a['wins']}-{a['losses']}** ({a['wins'] / a['games']:.1%}).")
 
         st.subheader("Live 2026 test: blitz vulnerability")
         st.caption("Rule set before any 2026 results: after the regular season, if the model *with* blitz "

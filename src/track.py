@@ -24,7 +24,8 @@ from src.evaluate import TRAIN_START, metrics, moneyline_prob
 
 TRACK_PATH = ROOT / "reports" / "live_tracking.csv"
 MODELS = ("logistic", "logistic_blitz")
-COLS = ["game_id", "season", "week", "gameday", "recorded", "source", "p_logistic", "p_logistic_blitz", "p_vegas"]
+COLS = ["game_id", "season", "week", "gameday", "recorded", "source", "p_logistic", "p_logistic_blitz", "p_vegas",
+        "pred_margin", "spread_line"]
 
 
 def _load() -> pd.DataFrame:
@@ -33,7 +34,7 @@ def _load() -> pd.DataFrame:
     return pd.DataFrame(columns=COLS)
 
 
-def record(games: pd.DataFrame, bundles: dict, source: str = "live"):
+def record(games: pd.DataFrame, bundles: dict, source: str = "live", spread: dict = None):
     """Record both models' probabilities for games that haven't kicked off yet."""
     from src.data_loader import load_schedules
     sched = load_schedules()[["game_id", "gameday", "gametime"]]
@@ -49,6 +50,8 @@ def record(games: pd.DataFrame, bundles: dict, source: str = "live"):
     for name, b in bundles.items():
         rows[f"p_{name}"] = b["model"].predict_proba(upcoming[b["features"]])[:, 1]
     rows["p_vegas"] = moneyline_prob(upcoming.home_moneyline, upcoming.away_moneyline)
+    rows["pred_margin"] = spread["model"].predict(upcoming[spread["features"]]) if spread else np.nan
+    rows["spread_line"] = upcoming.spread_line
     track = _load()
     # Replace earlier pregame rows for these games; rows for games already played stay frozen.
     track = track[~track.game_id.isin(rows.game_id)]
@@ -70,12 +73,31 @@ def backfill(season: int = CURRENT_SEASON):
         for name, (factory, cols) in factories.items():
             r[f"p_{name}"] = factory().fit(train[cols], train.home_win).predict_proba(wk[cols])[:, 1]
         r["p_vegas"] = moneyline_prob(wk.home_moneyline, wk.away_moneyline)
+        from src.spread import SPREAD_ALPHA, margin_model
+        sched = pd.read_parquet(ROOT / "data" / "raw" / "schedules.parquet")[["game_id", "result"]]
+        tr = train.merge(sched, on="game_id")
+        from src.features import FEATURE_COLUMNS
+        r["pred_margin"] = margin_model(SPREAD_ALPHA).fit(tr[FEATURE_COLUMNS], tr.result).predict(wk[FEATURE_COLUMNS])
+        r["spread_line"] = wk.spread_line
         rows.append(r)
     track = _load()
     new = pd.concat(rows)
     track = track[~track.game_id.isin(new.game_id)]
     pd.concat([track, new[COLS]], ignore_index=True).sort_values(["gameday", "game_id"]).to_csv(TRACK_PATH, index=False)
     print(f"Backfilled {len(new)} games from {season} weeks {sorted(new.week.unique())}")
+
+
+def ats_record(season: int = CURRENT_SEASON) -> dict:
+    """Live record against the spread: pick the side our spread favors vs the line."""
+    t = _load()
+    if "pred_margin" not in t:
+        return {}
+    sched = pd.read_parquet(ROOT / "data" / "raw" / "schedules.parquet")[["game_id", "result"]]
+    t = t[t.season == season].merge(sched, on="game_id").dropna(subset=["result", "pred_margin", "spread_line"])
+    ats = t.result - t.spread_line
+    t = t[ats != 0]
+    won = np.where(t.pred_margin > t.spread_line, t.result > t.spread_line, t.result < t.spread_line)
+    return {"wins": int(won.sum()), "losses": int(len(won) - won.sum()), "games": int(len(won))}
 
 
 def scoreboard(season: int = CURRENT_SEASON) -> pd.DataFrame:
@@ -106,3 +128,7 @@ if __name__ == "__main__":
         gap = sb.loc["logistic", "log_loss"] - sb.loc["logistic_blitz", "log_loss"]
         print(f"\nLeading: {lead} (blitz model better by {gap:+.4f} log loss). "
               f"Decision after the {CURRENT_SEASON} regular season.")
+    a = ats_record()
+    if a.get("games"):
+        print(f"Model spread vs Vegas line, {CURRENT_SEASON}: {a['wins']}-{a['losses']} against the spread "
+              f"({a['wins'] / a['games']:.1%}; break-even at -110 odds is 52.4%)")

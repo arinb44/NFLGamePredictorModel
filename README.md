@@ -37,6 +37,7 @@ src/
   track.py          live 2026 test of the blitz feature (records predictions before kickoff)
   qb_status.py      is the listed starting QB actually available? (injury report, roster, depth chart)
   coverage.py       man/zone and coverage-type analytics from nflverse participation data (2018+)
+  spread.py         predicted point spread (margin), cover probabilities, record against the spread
 notebooks/
   01_data_exploration.ipynb
   02_features.ipynb
@@ -194,6 +195,19 @@ Random forest and gradient boosting were tuned on the tuning seasons with all fe
 - **The best boosting setup is its simplest one:** 3-leaf trees, few of them, and large leaves. More flexible setups do worse, so the signal is mostly linear.
 - **Blending doesn't help.** Tree predictions correlate 0.94–0.97 with the logistic regression's, so they add noise rather than new information.
 - **The logistic regression is also the easiest model to explain,** since each factor's contribution can be read directly from its weight.
+
+### Point spreads
+
+The model also predicts a point spread with a separate margin model: symmetric ridge regression on the same features, with its strength chosen on the tuning seasons by margin error. The Vegas spread is still only a benchmark, never an input.
+
+| | Margin error, model (RMSE) | Margin error, Vegas | Against the spread, all games | When we differ by 3+ pts |
+|---|---|---|---|---|
+| Tuning 2012–18 | 13.28 | 13.17 | 962–850 (53.1%) | 230–173 (57.1%) |
+| **Holdout 2019–25** | **12.97** | **12.73** | **944–967 (49.4%)** | 256–235 (52.1%) |
+
+- **Vegas's spread is more accurate,** and on the holdout our spread does not beat the line. Break-even at −110 odds is 52.4%. The tuning-season 57% was luck.
+- **Cover probabilities are calibrated on the tuning seasons.** Disagreeing with Vegas is worth little: a 3-point gap means about a 53% chance to cover. Most games therefore show a 50–55% cover chance, which is the honest answer.
+- **Live 2026 record:** our spread and the Vegas line are recorded before kickoff in `reports/live_tracking.csv`, and `python -m src.track` prints the record against the spread.
 
 ### Matchup features
 

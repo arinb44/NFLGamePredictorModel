@@ -109,20 +109,35 @@ def main():
         from src.track import record
         test_path = MODELS_DIR / "logistic_blitz.joblib"
         if test_path.exists():
-            record(season, {"logistic": bundle, "logistic_blitz": joblib.load(test_path)})
+            record(season, {"logistic": bundle, "logistic_blitz": joblib.load(test_path)},
+                   spread=joblib.load(MODELS_DIR / "spread.joblib") if (MODELS_DIR / "spread.joblib").exists() else None)
     exps = explain(bundle, g.reset_index(drop=True), missing, top=args.top)
     g = g.reset_index(drop=True)
     vegas = moneyline_prob(g.home_moneyline, g.away_moneyline)
+    from src.spread import cover_prob_calibrated, fmt_spread
+    sp_path = MODELS_DIR / "spread.joblib"
+    sp = joblib.load(sp_path) if sp_path.exists() else None
+    margins = sp["model"].predict(g[sp["features"]]) if sp else np.full(len(g), np.nan)
 
     print(f"\n{args.season} week {week} — model trained through {bundle['trained_through']}\n")
     rows = []
-    for e, v, (_, r) in zip(exps, vegas, g.iterrows()):
+    for e, v, m, (_, r) in zip(exps, vegas, margins, g.iterrows()):
         print(format_explanation(e, v))
+        if sp is not None:
+            line = f"  Spread: model {fmt_spread(r.home_team, r.away_team, m)}"
+            if r.spread_line == r.spread_line:
+                pc = float(cover_prob_calibrated(m, r.spread_line, sp["cover_k"]))
+                side, pside = (r.home_team, pc) if pc >= 0.5 else (r.away_team, 1 - pc)
+                line += (f"  |  Vegas {fmt_spread(r.home_team, r.away_team, r.spread_line)}  |  "
+                         f"{side} covers {pside:.0%}")
+            print(line)
         if r.home_score == r.home_score:  # already played
             print(f"  Final: {r.away_team} {r.away_score:.0f} - {r.home_team} {r.home_score:.0f}")
         print()
         rows.append({"game_id": e["game_id"], "away": e["away_team"], "home": e["home_team"],
                      "p_home": round(e["p_home"], 4), "p_vegas": None if np.isnan(v) else round(float(v), 4),
+                     "model_spread": fmt_spread(r.home_team, r.away_team, m),
+                     "vegas_spread": fmt_spread(r.home_team, r.away_team, r.spread_line),
                      **{f"factor_{i + 1}": f"{f['favors']} +{abs(f['pct_points']) * 100:.1f}% {f['factor']}"
                         for i, f in enumerate(e["factors"])}})
     if not overrides and not args.assume_backups:
