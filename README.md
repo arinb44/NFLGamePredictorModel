@@ -36,6 +36,7 @@ src/
   predict.py        predict a week (or one game) with probabilities and top factors
   track.py          live 2026 test of the blitz feature (records predictions before kickoff)
   qb_status.py      is the listed starting QB actually available? (injury report, roster, depth chart)
+  coverage.py       man/zone and coverage-type analytics from nflverse participation data (2018+)
 notebooks/
   01_data_exploration.ipynb
   02_features.ipynb
@@ -65,6 +66,7 @@ python -m pytest tests           # leakage checks
 python -m src.tune_features      # optional: re-tune feature settings (~1 min)
 python -m src.tune_models        # optional: re-tune tree models (~7 min)
 python -m src.train              # walk-forward evaluation + save final model
+python -m src.coverage           # man/zone coverage analytics for the dashboard
 streamlit run app/dashboard.py   # open the dashboard at http://localhost:8501
 ```
 
@@ -131,6 +133,7 @@ The dashboard's **This Week** page shows the same breakdown as a waterfall chart
 | Games | Every game in a week with out-of-sample model, Vegas and Elo probabilities; model-vs-Vegas scatter for a season |
 | Players | Biggest skill-player absences and a team's weekly missing share |
 | Situational | Win rates by body-clock kickoff time, time zones traveled, cold shock, wind, and fatigue |
+| Team Analytics | 3rd-down conversion (offense vs. defense), 4th-down aggressiveness and success, man vs. zone usage, coverage mix (Cover 0/1/2/3/4/6…), and offense vs. man and zone, for any team and season |
 | Matchups | QB bad-weather sensitivity ranking; pressure map (protection vs. pass rush, with any team's trend by season); offense vs. the blitz; live 2026 test week by week |
 | Model | Calibration, log loss by season, and the model's weights |
 
@@ -201,6 +204,8 @@ Random forest and gradient boosting were tuned on the tuning seasons with all fe
 | Blitz vulnerability | FTN charting, 2022+ | can't test (no data) | 2023–25 only: 0.6246 → 0.6227 | Held out: its only evidence is from holdout seasons |
 | QB clutch (4th quarter/OT, within one score) | play-by-play, 2006+ | 0.61439 → 0.61432 | – | Not used: the gain is noise-sized |
 | QB prime time (7 PM ET or later) | schedule + play-by-play | 0.61439 → 0.61450 (worse) | – | Not used |
+| 3rd-/4th-down conversion rates | play-by-play, 2006+ | 0.61454 → 0.61478 / 0.61544 (worse) | – | Not used: they correlate 0.79 with EPA and add luck |
+| Man vs. zone coverage | participation data, 2018–2025 | no tuning-season data; no current-season data yet | – | Analytics only (dashboard) |
 
 - **QB bad-weather sensitivity** is shrunk hard: a QB needs about 2,500 bad-weather dropbacks before his own record counts fully.
   - Most weather-sensitive entering 2026: Brock Purdy and Baker Mayfield.

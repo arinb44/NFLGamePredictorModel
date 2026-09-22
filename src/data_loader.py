@@ -105,6 +105,12 @@ def load_depth_charts(season: int, refresh: bool = False) -> pd.DataFrame:
     return pd.read_parquet(_season_file("depth_charts", season, refresh))
 
 
+def load_participation(season: int, refresh: bool = False) -> pd.DataFrame:
+    """Per-play participation charting (2018+ has man/zone and coverage type).
+    Published with a lag; the current season may not exist yet."""
+    return pd.read_parquet(_season_file("participation", season, refresh))
+
+
 def load_ftn(seasons: Iterable[int], refresh: bool = False) -> pd.DataFrame:
     """FTN play charting, 2022+: number of blitzers and pass rushers on each play."""
     seasons = [s for s in seasons if s >= FTN_FIRST_SEASON]

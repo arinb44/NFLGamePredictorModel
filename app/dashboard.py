@@ -120,6 +120,42 @@ def load(versions):
 
 
 @st.cache_data
+def load_coverage(version):
+    paths = {k: PROCESSED_DIR / f"coverage_{k}.parquet" for k in ("defense", "types", "offense")}
+    if not all(p.exists() for p in paths.values()):
+        return None
+    return {k: pd.read_parquet(p) for k, p in paths.items()}
+
+
+def team_scatter(df, x, y, x_title, y_title, focus, x_fmt="%", y_fmt="%", reverse_y=False, diagonal=False,
+                 tooltip=None, height=440):
+    """32-team scatter with league-average reference lines, the focus team highlighted and labeled."""
+    df = df.copy()
+    df["group"] = np.where(df.team == focus, "Selected team", "Other teams")
+    base = alt.Chart(df).encode(
+        x=alt.X(f"{x}:Q", title=x_title, axis=alt.Axis(format=x_fmt), scale=alt.Scale(zero=False, padding=24)),
+        y=alt.Y(f"{y}:Q", title=y_title, axis=alt.Axis(format=y_fmt),
+                scale=alt.Scale(zero=False, padding=24, reverse=reverse_y)),
+        tooltip=tooltip or ["team"])
+    dots = base.mark_circle(size=90, stroke="white", strokeWidth=1).encode(
+        color=alt.Color("group:N", legend=None, scale=alt.Scale(domain=["Selected team", "Other teams"],
+                                                                range=[ORANGE, BLUE])),
+        size=alt.condition(alt.datum.group == "Selected team", alt.value(220), alt.value(90)))
+    # Label the selected team plus the 3 most extreme teams on each axis, to keep labels readable.
+    ext = set(df.nlargest(3, x).team) | set(df.nsmallest(3, x).team) | set(df.nlargest(3, y).team) | \
+        set(df.nsmallest(3, y).team) | {focus}
+    names = base.transform_filter(alt.FieldOneOfPredicate(field="team", oneOf=sorted(ext))).mark_text(
+        dy=-11, fontSize=11, color=TEXT_2).encode(text="team:N")
+    layers = [alt.Chart(pd.DataFrame({"v": [float(df[x].mean())]})).mark_rule(color=GRAY, strokeDash=[4, 4]).encode(x="v:Q"),
+              alt.Chart(pd.DataFrame({"v": [float(df[y].mean())]})).mark_rule(color=GRAY, strokeDash=[4, 4]).encode(y="v:Q")]
+    if diagonal:
+        lo, hi = float(min(df[x].min(), df[y].min())), float(max(df[x].max(), df[y].max()))
+        layers.append(alt.Chart(pd.DataFrame({"a": [lo, hi], "b": [lo, hi]})).mark_line(
+            color=GRAY, strokeWidth=1).encode(x="a:Q", y="b:Q"))
+    return style(alt.layer(*layers, dots, names), height)
+
+
+@st.cache_data
 def prime_time_records():
     """Each QB's prime-time record vs the wins the model expected (out-of-sample, 2012+)."""
     from src.data_loader import load_schedules
@@ -253,7 +289,8 @@ st.title("NFL Win Probability Model")
 st.caption("Pregame win probabilities from team efficiency, quarterbacks, player availability, "
            "travel, fatigue and weather. Data: nflverse, Open-Meteo.")
 
-page = st.sidebar.radio("Section", ["This Week", "Overview", "Teams", "Games", "Players", "Situational", "Matchups", "Model"])
+page = st.sidebar.radio("Section", ["This Week", "Overview", "Teams", "Team Analytics", "Games", "Players",
+                                    "Situational", "Matchups", "Model"])
 
 # ================================================================ This Week
 if page == "This Week":
@@ -505,6 +542,130 @@ elif page == "Teams":
                                 "model_win_prob": st.column_config.ProgressColumn(
                                     "model win %", min_value=0, max_value=1, format="percent"),
                                 "vegas_win_prob": st.column_config.NumberColumn("Vegas win %", format="percent")})
+
+# ================================================================ Team Analytics
+elif page == "Team Analytics":
+    st.caption("Team tendencies and situational efficiency. These are **not model features**: 3rd/4th-down rates "
+               "made predictions worse on the tuning seasons (they mostly repeat EPA plus luck), and coverage data "
+               "only exists for 2018–2025. They're here to explain *how* teams win.")
+    tg = team_games[team_games.game_type == "REG"]
+    c1, c2 = st.columns(2)
+    per_team = tg.groupby("season").size() / 32
+    seasons_a = sorted(tg.season.unique(), reverse=True)
+    default_a = max(int(x) for x in per_team[per_team >= 8].index)
+    season_a = c1.selectbox("Season", seasons_a, index=seasons_a.index(default_a), key="ta_season")
+    team_opts = sorted(tg.team.unique())
+    focus = c2.selectbox("Team", team_opts, index=team_opts.index("LAC"), key="ta_team")
+    ts = tg[tg.season == season_a]
+
+    # ---- 3rd downs
+    st.subheader("3rd downs")
+    d3 = ts.groupby("team")[["off_third_conv", "off_third_att", "def_third_conv", "def_third_att"]].sum().reset_index()
+    d3["off_rate"] = d3.off_third_conv / d3.off_third_att
+    d3["def_rate"] = d3.def_third_conv / d3.def_third_att
+    r = d3.set_index("team").loc[focus]
+    m1, m2, m3 = st.columns(3)
+    m1.metric(f"{focus} offense converts", f"{r.off_rate:.1%}", f"{(r.off_rate - d3.off_rate.mean()) * 100:+.1f} pts vs league")
+    m2.metric(f"{focus} defense allows", f"{r.def_rate:.1%}", f"{(r.def_rate - d3.def_rate.mean()) * 100:+.1f} pts vs league",
+              delta_color="inverse")
+    m3.metric("Offense rank", f"{int(d3.off_rate.rank(ascending=False)[d3.team == focus].iloc[0])} of 32")
+    st.caption("Right = offense converts more. Up = defense allows fewer (axis flipped so up is better). "
+               "Dashed lines are league averages.")
+    st.altair_chart(team_scatter(
+        d3, "off_rate", "def_rate", "Offense 3rd-down conversion rate", "Defense 3rd-down rate allowed", focus,
+        reverse_y=True, tooltip=["team", alt.Tooltip("off_rate:Q", format=".1%", title="offense converts"),
+                                 alt.Tooltip("off_third_att:Q", title="offense attempts"),
+                                 alt.Tooltip("def_rate:Q", format=".1%", title="defense allows")]),
+        use_container_width=True)
+
+    # ---- 4th downs
+    st.subheader("4th downs")
+    d4 = ts.groupby("team").agg(att=("off_fourth_att", "sum"), conv=("off_fourth_conv", "sum"),
+                                games=("game_id", "size")).reset_index()
+    d4["att_per_game"] = d4.att / d4.games
+    d4["rate"] = d4.conv / d4.att.where(d4.att > 0)
+    r4 = d4.set_index("team").loc[focus]
+    m1, m2 = st.columns(2)
+    m1.metric(f"{focus} 4th-down attempts per game", f"{r4.att_per_game:.2f}")
+    m1.caption(f"{r4.att:.0f} attempts; league average {d4.att_per_game.mean():.2f} per game")
+    m2.metric(f"{focus} 4th-down conversion", f"{r4.rate:.0%}" if r4.rate == r4.rate else "–")
+    m2.caption(f"league {d4.conv.sum() / d4.att.sum():.0%}")
+    st.caption("Right = more aggressive (more 4th-down attempts). Up = converts more often. "
+               "Small samples: a team might try only 15–30 in a season.")
+    st.altair_chart(team_scatter(
+        d4.dropna(subset=["rate"]), "att_per_game", "rate", "4th-down attempts per game", "4th-down conversion rate",
+        focus, x_fmt=".1f", tooltip=["team", alt.Tooltip("att:Q", title="attempts"), alt.Tooltip("conv:Q", title="converted"),
+                                     alt.Tooltip("rate:Q", format=".0%", title="conversion rate")], height=380),
+        use_container_width=True)
+
+    # ---- Coverage
+    st.subheader("Coverage: man vs. zone")
+    cov_path = PROCESSED_DIR / "coverage_defense.parquet"
+    cov = load_coverage(cov_path.stat().st_mtime if cov_path.exists() else 0)
+    if cov is None:
+        st.info("Run `python -m src.coverage` to build coverage analytics.")
+    else:
+        cseasons = sorted(cov["defense"].season.unique())
+        season_c = season_a if season_a in cseasons else cseasons[-1]
+        if season_c != season_a:
+            st.caption(f"Coverage charting for {season_a} isn't published yet (nflverse releases it after the season); "
+                       f"showing {season_c}.")
+        dfn = cov["defense"][cov["defense"].season == season_c].copy()
+        league_man = float((dfn.man_rate * dfn.dropbacks).sum() / dfn.dropbacks.sum())
+        rc = dfn.set_index("team").loc[focus] if focus in set(dfn.team) else None
+        if rc is not None:
+            m1, m2 = st.columns(2)
+            m1.metric(f"{focus} man coverage", f"{rc.man_rate:.0%}")
+            m1.caption(f"of charted dropbacks; league {league_man:.0%}")
+            m2.metric(f"{focus} zone coverage", f"{1 - rc.man_rate:.0%}")
+            m2.caption(f"league {1 - league_man:.0%}")
+        dfn["group"] = np.where(dfn.team == focus, "Selected team", "Other teams")
+        bars = alt.Chart(dfn).mark_bar(cornerRadiusEnd=4).encode(
+            y=alt.Y("team:N", sort="-x", title=None, axis=alt.Axis(labelOverlap=False)),
+            x=alt.X("man_rate:Q", title="Share of dropbacks in man coverage", axis=alt.Axis(format="%")),
+            color=alt.Color("group:N", legend=None, scale=alt.Scale(domain=["Selected team", "Other teams"],
+                                                                    range=[ORANGE, BLUE])),
+            tooltip=["team", alt.Tooltip("man_rate:Q", format=".1%", title="man"),
+                     alt.Tooltip("dropbacks:Q", title="charted dropbacks")])
+        ref = alt.Chart(pd.DataFrame({"v": [league_man]})).mark_rule(color=GRAY, strokeDash=[4, 4]).encode(x="v:Q")
+        st.caption(f"{season_c}: how often each defense plays man (the rest is zone). Dashed line = league average.")
+        st.altair_chart(style(bars + ref, 20 * len(dfn) + 40), use_container_width=True)
+
+        types = cov["types"][cov["types"].season == season_c]
+        lg = types.groupby("coverage").plays.sum()
+        mix = pd.DataFrame({"league": lg / lg.sum()})
+        mix[focus] = types[types.team == focus].set_index("coverage").share
+        mix = mix.fillna(0).reset_index().melt(id_vars="coverage", var_name="who", value_name="share")
+        order = list((lg / lg.sum()).sort_values(ascending=False).index)
+        st.markdown(f"**{focus} coverage mix vs. league ({season_c})**")
+        st.altair_chart(style(alt.Chart(mix).mark_bar(cornerRadiusEnd=3).encode(
+            x=alt.X("coverage:N", sort=order, title=None, axis=alt.Axis(labelAngle=0)),
+            xOffset=alt.XOffset("who:N", sort=[focus, "league"]),
+            y=alt.Y("share:Q", title="Share of charted dropbacks", axis=alt.Axis(format="%")),
+            color=alt.Color("who:N", legend=alt.Legend(title=None),
+                            scale=alt.Scale(domain=[focus, "league"], range=[ORANGE, GRAY])),
+            tooltip=["who", "coverage", alt.Tooltip("share:Q", format=".1%")]), 300), use_container_width=True)
+
+        st.subheader("Offense vs. man and zone")
+        off = cov["offense"][cov["offense"].season == season_c].dropna()
+        st.caption(f"{season_c}: EPA per dropback against each coverage. Above the diagonal = better against zone; "
+                   "below = better against man. Dashed lines are league averages.")
+        ro = off.set_index("team").loc[focus] if focus in set(off.team) else None
+        if ro is not None:
+            m1, m2 = st.columns(2)
+            lm = float((off.epa_vs_man * off.n_vs_man).sum() / off.n_vs_man.sum())
+            lz = float((off.epa_vs_zone * off.n_vs_zone).sum() / off.n_vs_zone.sum())
+            m1.metric(f"{focus} EPA/dropback vs man", f"{ro.epa_vs_man:+.3f}")
+            m1.caption(f"{ro.n_vs_man:.0f} dropbacks; league {lm:+.3f}")
+            m2.metric(f"{focus} EPA/dropback vs zone", f"{ro.epa_vs_zone:+.3f}")
+            m2.caption(f"{ro.n_vs_zone:.0f} dropbacks; league {lz:+.3f}")
+        st.altair_chart(team_scatter(
+            off, "epa_vs_man", "epa_vs_zone", "EPA/dropback vs man coverage", "EPA/dropback vs zone coverage", focus,
+            x_fmt="+.2f", y_fmt="+.2f", diagonal=True,
+            tooltip=["team", alt.Tooltip("epa_vs_man:Q", format="+.3f", title="vs man"),
+                     alt.Tooltip("n_vs_man:Q", title="dropbacks vs man"),
+                     alt.Tooltip("epa_vs_zone:Q", format="+.3f", title="vs zone"),
+                     alt.Tooltip("n_vs_zone:Q", title="dropbacks vs zone")]), use_container_width=True)
 
 # ================================================================ Games
 elif page == "Games":

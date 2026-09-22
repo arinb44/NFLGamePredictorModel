@@ -21,6 +21,7 @@ PBP_COLUMNS = [
     "pass", "rush", "qb_dropback", "sack", "interception", "fumble_lost",
     "yards_gained", "qb_kneel", "qb_spike", "yardline_100", "fixed_drive",
     "fixed_drive_result", "special_teams_play", "two_point_attempt", "qtr", "qb_hit",
+    "third_down_converted", "third_down_failed", "fourth_down_converted", "fourth_down_failed",
 ]
 
 ST_PLAY_TYPES = {"kickoff", "punt", "field_goal", "extra_point"}
@@ -88,6 +89,21 @@ def _red_zone_stats(pbp: pd.DataFrame) -> pd.DataFrame:
     return out
 
 
+def _down_conversions(pbp: pd.DataFrame) -> pd.DataFrame:
+    """3rd- and 4th-down attempts and conversion rates per team per game."""
+    d = pbp[pbp.posteam.notna()]
+    g = d.groupby(["game_id", "posteam"])
+    out = pd.DataFrame({
+        "third_att": g.third_down_converted.sum() + g.third_down_failed.sum(),
+        "third_conv": g.third_down_converted.sum(),
+        "fourth_att": g.fourth_down_converted.sum() + g.fourth_down_failed.sum(),
+        "fourth_conv": g.fourth_down_converted.sum(),
+    })
+    out["third_rate"] = out.third_conv / out.third_att.where(out.third_att > 0)
+    out["fourth_rate"] = out.fourth_conv / out.fourth_att.where(out.fourth_att > 0)
+    return out
+
+
 def _special_teams_epa(pbp: pd.DataFrame) -> pd.DataFrame:
     """Net special-teams EPA per team per game (EPA is from posteam's view)."""
     st = pbp[pbp.play_type.isin(ST_PLAY_TYPES) & pbp.epa.notna() & pbp.posteam.notna()]
@@ -101,7 +117,8 @@ def build_team_games(seasons=range(FIRST_SEASON, CURRENT_SEASON + 1)) -> pd.Data
     frames = []
     for season in seasons:
         pbp = load_pbp([season], columns=PBP_COLUMNS)
-        off = _offense_stats(pbp).join(_red_zone_stats(pbp)).join(_special_teams_epa(pbp))
+        off = (_offense_stats(pbp).join(_red_zone_stats(pbp)).join(_special_teams_epa(pbp))
+               .join(_down_conversions(pbp)))
         frames.append(off.reset_index().rename(columns={"posteam": "team"}))
     off = pd.concat(frames, ignore_index=True)
     off["rz_trips"] = off.rz_trips.fillna(0)

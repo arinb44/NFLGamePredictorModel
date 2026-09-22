@@ -65,6 +65,9 @@ TEAM_STATS = [
     "points_for", "points_against", "point_diff", "win",
 ]
 FORM_STATS = ["point_diff", "off_epa_per_play", "def_epa_per_play"]
+# 3rd/4th-down conversion rates (offense) and allowed (defense), rolled like the other team stats.
+DOWN_STATS = ["off_third_rate", "def_third_rate", "off_fourth_rate", "def_fourth_rate"]
+DOWN_FEATURES = [f"diff_{c}" for c in DOWN_STATS]
 
 
 def _rolling_pregame(tg: pd.DataFrame, stats, decay, prior_games, carryover, prior_fade=1.0) -> pd.DataFrame:
@@ -193,12 +196,13 @@ def build_team_features(tg: pd.DataFrame, p: FeatureParams = FeatureParams()) ->
     pressure = _rolling_pregame(tg, ["off_pressure_rate", "def_pressure_rate"], p.decay, p.prior_games,
                                 p.carryover, p.prior_fade)
     pressure.columns = ["pr_allowed", "pr_generated"]
+    downs = _rolling_pregame(tg, DOWN_STATS, p.decay, p.prior_games, p.carryover, p.prior_fade)
     qb = _qb_pregame(tg, p)
     log, rosters, outs = load_player_inputs()
     skill = skill_availability(tg, log, rosters, outs, p.player_decay, p.player_season_decay,
                                p.player_prior_games, p.part_decay, p.part_season_decay)
-    feats = pd.concat([tg[["game_id", "team", "season", "gameday", "rest"]], roll, form, pressure, qb, skill],
-                      axis=1)
+    feats = pd.concat([tg[["game_id", "team", "season", "gameday", "rest"]], roll, form, pressure, downs, qb,
+                       skill], axis=1)
     feats["qb_changed"] = _qb_changed(tg)
     return feats
 
