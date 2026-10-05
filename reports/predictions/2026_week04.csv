@@ -1,17 +1,17 @@
 game_id,away,home,p_home,p_vegas,model_spread,vegas_spread,factor_1,factor_2,factor_3
-2026_04_PIT_CLE,PIT,CLE,0.424,0.4279,PIT -2.5,PIT -2.5,CLE +7.0% Home field,PIT +4.0% Offense,PIT +2.4% Quarterback
-2026_04_ARI_NYG,ARI,NYG,0.6083,0.4486,NYG -3.5,ARI -2.5,NYG +7.0% Home field,NYG +2.7% Special teams,NYG +2.3% Scoring & record
-2026_04_DAL_HOU,DAL,HOU,0.5598,0.5934,HOU -2,HOU -3,HOU +9.5% Defense,HOU +6.6% Home field,DAL +5.2% Offense
-2026_04_DEN_SF,DEN,SF,0.7148,0.5721,SF -6.5,SF -3,SF +7.0% Home field,SF +5.8% Offense,SF +5.2% Quarterback
-2026_04_DET_CAR,DET,CAR,0.4261,0.3836,DET -2.5,DET -3.5,CAR +7.0% Home field,DET +6.8% Quarterback,DET +3.8% Offense
-2026_04_GB_TB,GB,TB,0.383,0.3836,GB -2,GB -3.5,GB +15.1% Quarterback,TB +6.6% Home field,GB +1.7% Recent form
-2026_04_IND_WAS,IND,WAS,0.4956,0.3691,IND -0.5,IND -3.5,WAS +2.1% Quarterback,IND +1.8% Defense,WAS +1.5% Fatigue
-2026_04_JAX_CIN,JAX,CIN,0.491,0.5635,CIN -0.5,CIN -2.5,CIN +7.0% Home field,JAX +4.2% Scoring & record,JAX +3.1% Defense
-2026_04_KC_LV,KC,LV,0.3756,0.3425,KC -4.5,KC -4.5,KC +7.4% Offense,LV +7.0% Home field,KC +4.4% Quarterback
-2026_04_LAC_SEA,LAC,SEA,0.7745,0.76,SEA -9,SEA -7,SEA +7.1% Scoring & record,SEA +6.7% Home field,SEA +5.0% Defense
-2026_04_LA_PHI,LA,PHI,0.5028,0.4066,PHI -0.5,LA -3,PHI +7.0% Home field,LA +4.2% Offense,LA +1.6% Defense
-2026_04_MIA_MIN,MIA,MIN,0.7795,0.8223,MIN -10,MIN -10.5,MIN +10.0% Defense,MIN +6.6% Scoring & record,MIN +6.0% Home field
-2026_04_NE_BUF,NE,BUF,0.6615,0.7136,BUF -5.5,BUF -6.5,BUF +7.0% Home field,NE +5.8% Defense,BUF +5.6% Offense
-2026_04_NYJ_CHI,NYJ,CHI,0.6803,0.6092,CHI -6.5,CHI -3.5,CHI +7.0% Home field,CHI +6.0% Scoring & record,CHI +4.8% Offense
-2026_04_TEN_BAL,TEN,BAL,0.8433,0.84,BAL -13.5,BAL -11.5,BAL +11.1% Quarterback,BAL +7.1% Offense,BAL +5.8% Home field
-2026_04_ATL_NO,ATL,NO,0.5325,0.5721,NO -0.5,NO -2.5,NO +7.0% Home field,ATL +1.5% Divisional game,ATL +1.4% Rest
+2026_04_PIT_CLE,PIT,CLE,0.4267,0.4279,PIT -2.5,PIT -2.5,CLE +7.0% Home field,PIT +4.0% Offense,PIT +2.4% Quarterback
+2026_04_ARI_NYG,ARI,NYG,0.6013,0.4486,NYG -3.5,ARI -2.5,NYG +7.0% Home field,NYG +2.7% Special teams,NYG +2.3% Scoring & record
+2026_04_DAL_HOU,DAL,HOU,0.5732,0.583,HOU -2.5,HOU -3,HOU +9.5% Defense,HOU +6.6% Home field,DAL +5.2% Offense
+2026_04_DEN_SF,DEN,SF,0.7155,0.5996,SF -6.5,SF -3,SF +7.0% Home field,SF +5.8% Offense,SF +5.2% Quarterback
+2026_04_DET_CAR,DET,CAR,0.4152,0.3364,DET -3,DET -4.5,CAR +7.0% Home field,DET +6.8% Quarterback,DET +3.8% Offense
+2026_04_GB_TB,GB,TB,0.3715,0.417,GB -2,GB -3,GB +15.1% Quarterback,TB +6.6% Home field,GB +1.7% Recent form
+2026_04_IND_WAS,IND,WAS,0.4227,0.331,IND -3,IND -4.5,IND +2.9% Quarterback,IND +1.9% Missing defenders,IND +1.8% Defense
+2026_04_JAX_CIN,JAX,CIN,0.4833,0.5721,Pick'em,CIN -2.5,CIN +7.0% Home field,JAX +4.2% Scoring & record,JAX +3.1% Defense
+2026_04_KC_LV,KC,LV,0.3565,0.3364,KC -5,KC -4.5,KC +7.4% Offense,LV +7.0% Home field,KC +4.4% Quarterback
+2026_04_LAC_SEA,LAC,SEA,0.7796,0.7441,SEA -9,SEA -7,SEA +7.1% Scoring & record,SEA +6.7% Home field,SEA +5.0% Defense
+2026_04_LA_PHI,LA,PHI,0.4844,0.3631,LA -0.5,LA -3.5,PHI +7.0% Home field,LA +4.2% Offense,LA +1.6% Defense
+2026_04_MIA_MIN,MIA,MIN,0.7699,0.8082,MIN -10,MIN -10,MIN +10.0% Defense,MIN +6.6% Scoring & record,MIN +6.0% Home field
+2026_04_NE_BUF,NE,BUF,0.6769,0.7441,BUF -5.5,BUF -7,BUF +7.0% Home field,NE +5.8% Defense,BUF +5.6% Offense
+2026_04_NYJ_CHI,NYJ,CHI,0.7203,0.6309,CHI -8,CHI -3.5,CHI +7.0% Home field,CHI +6.0% Scoring & record,CHI +4.8% Offense
+2026_04_TEN_BAL,TEN,BAL,0.8282,0.8525,BAL -12.5,BAL -11.5,BAL +11.1% Quarterback,BAL +7.1% Offense,BAL +5.8% Home field
+2026_04_ATL_NO,ATL,NO,0.4929,0.5217,ATL -0.5,NO -1.5,NO +7.0% Home field,ATL +1.7% Missing skill players,ATL +1.5% Divisional game
