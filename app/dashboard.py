@@ -308,6 +308,60 @@ def prob_bar(home, away, p_home, p_vegas=None):
             f'</div>{tick}</div>')
 
 
+def _split_bar(pct, color):
+    if pd.isna(pct):
+        return f'<span style="color:{GRAY}">–</span>'
+    return (f'<div style="display:flex;align-items:center;gap:6px">'
+            f'<div style="flex:1;height:8px;background:{GRID};border-radius:4px;overflow:hidden">'
+            f'<div style="width:{pct:.0f}%;height:100%;background:{color};border-radius:4px"></div></div>'
+            f'<span style="width:34px;text-align:right;font-variant-numeric:tabular-nums">{pct:.0f}%</span></div>')
+
+
+def splits_legend():
+    dot = 'display:inline-block;width:10px;height:10px;border-radius:5px;margin:0 5px 0 12px'
+    return (f'<div style="font-size:13px;color:{TEXT_2};margin-bottom:8px">'
+            f'<span style="{dot};margin-left:0;background:{BLUE}"></span>% of the money (handle)'
+            f'<span style="{dot};background:{AQUA}"></span>% of the bets'
+            f'<span style="margin-left:14px">✓ = the side that won (or covered / hit)</span></div>')
+
+
+def splits_card(sides: pd.DataFrame, meta: dict) -> str:
+    """One prime-time game: each side of the moneyline, spread and total with its share of
+    the money and of the bets; winning sides are checked."""
+    r = sides.iloc[0]
+
+    def logo(team):
+        return (f'<img src="{meta.get(team, {}).get("logo", "")}" alt="" '
+                f'style="height:26px;vertical-align:middle;margin:0 6px">')
+
+    pending = (sides.result == "pending").all()
+    when = (f"splits {r.hours_before:.1f} h before kickoff" if pending
+            else f"final · splits {r.hours_before:.1f} h before kickoff")
+    head = (f'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">'
+            f'<div style="font-size:17px;font-weight:700">{logo(r.away_team)}{r.away_team} @ {r.home_team}'
+            f'{logo(r.home_team)}</div>'
+            f'<div style="text-align:right;font-size:13px;color:{TEXT_2}">Week {r.week} · {r.slot}<br>'
+            f'<span style="color:#fff;font-weight:600">{r.Score}</span></div></div>'
+            f'<div style="font-size:12px;color:{TEXT_2};margin-bottom:4px">{when}</div>')
+    grid = "display:grid;grid-template-columns:minmax(96px,1.1fr) 1fr 1fr 18px;gap:10px;align-items:center"
+    body = ""
+    for market, m in sides.groupby("market", sort=False):
+        body += (f'<div style="{grid};margin-top:8px;font-size:11px;text-transform:uppercase;letter-spacing:.06em;'
+                 f'color:{TEXT_2}"><span>{market}</span><span>Money</span><span>Bets</span><span></span></div>')
+        for s in m.itertuples():
+            odds = f"{s.odds:+.0f}".replace("-", "−") if pd.notna(s.odds) else ""
+            label = s.Bet.replace(" ML", "")
+            won, lost = s.result == "won", s.result == "lost"
+            mark = {"won": f'<span style="color:{AQUA};font-weight:700">✓</span>',
+                    "push": f'<span style="color:{GRAY}">P</span>'}.get(s.result, "")
+            body += (f'<div style="{grid};font-size:14px;padding:2px 0;opacity:{0.55 if lost else 1}">'
+                     f'<span style="font-weight:{700 if won else 500}">{label} '
+                     f'<span style="color:{TEXT_2};font-size:12px">{odds}</span></span>'
+                     f'{_split_bar(s.handle_pct, BLUE)}{_split_bar(s.bets_pct, AQUA)}{mark}</div>')
+    return (f'<div style="background:#16161a;border:1px solid {GRID};border-radius:12px;padding:14px 16px;'
+            f'margin-bottom:16px">{head}{body}</div>')
+
+
 games, oos, missing, results, team_games = load(tuple(f.stat().st_mtime if f.exists() else 0 for f in DATA_FILES))
 teams = team_long(games)
 played = games[games.home_win.notna()]
@@ -323,7 +377,7 @@ st.caption("Pregame win probabilities from team efficiency, quarterbacks, player
            "travel, fatigue and weather. Data: nflverse, Open-Meteo.")
 
 page = st.sidebar.selectbox("Section", ["This Week", "Overview", "Teams", "Team Analytics", "Games", "Players",
-                                        "Situational", "Matchups", "Model"])
+                                        "Situational", "Matchups", "Prime Time", "Model"])
 
 # ================================================================ This Week
 if page == "This Week":
@@ -1097,6 +1151,134 @@ elif page == "Matchups":
                                    height=300), use_container_width=True)
     else:
         st.info("No live tracking yet. Run `python -m src.predict`.")
+
+# ================================================================ Prime Time
+elif page == "Prime Time":
+    from src.data_loader import load_schedules
+    from src.splits import (GAMES_PATH, MARKETS, disagreements, graded, kickoff_times, load_splits,
+                            majority_record, record)
+
+    st.caption("Thursday, Sunday and Monday night games: the share of the money (**% handle**) and of the wagers "
+               "(**% bets**) on each side at DraftKings, and which side won. When a side's share of the money is "
+               "bigger than its share of the bets, fewer but larger wagers are on it (often read as sharper money). "
+               "Sources: DraftKings Sportsbook Betting Splits (all jurisdictions), Champs or Chumps (prime-time "
+               "slate), nflverse (final scores).")
+    if not GAMES_PATH.exists():
+        st.info("Run `python -m src.splits` to capture prime-time betting splits.")
+    else:
+        pt_games = pd.read_csv(GAMES_PATH)
+        sched = load_schedules()
+        g = graded(load_splits(), pt_games, sched)
+
+        c1, c2 = st.columns([1, 2])
+        seasons = sorted(pt_games.season.unique(), reverse=True)
+        season_pt = c1.selectbox("Season", seasons, key="pt_season")
+        slot = c2.radio("Slot", ["All", "TNF", "SNF", "MNF"], horizontal=True, key="pt_slot")
+        pg = pt_games[(pt_games.season == season_pt) & ((pt_games.slot == slot) if slot != "All" else True)].copy()
+        g = g[g.game_id.isin(pg.game_id)] if len(g) else g
+        done = g[g.result != "pending"] if len(g) else g
+
+        st.subheader("Who won: the public side or the money side?")
+        if done.empty:
+            st.info("No graded games yet. Splits are captured before each prime-time kickoff and graded once "
+                    "the final score is in.")
+        else:
+            summary = pd.DataFrame([{
+                "Market": m.title(),
+                "Side with most bets": record(majority_record(done[done.market == m], "bets_pct")),
+                "Side with most money": record(majority_record(done[done.market == m], "handle_pct")),
+                "Money and bets disagree: money side": record(disagreements(done[done.market == m])),
+            } for m in MARKETS])
+            st.dataframe(summary, hide_index=True, use_container_width=True)
+            st.caption(f"{done.game_id.nunique()} graded games. Records are W-L(-push) with win rate. "
+                       "Spreads and totals are graded against the line in the snapshot, so a side can cover at "
+                       "one number and not another. 50/50 splits are left out.")
+
+        # ---- every game, every market
+        kick = kickoff_times(sched).dt.tz_convert("America/New_York")
+        sc = sched.set_index("game_id")
+        pg["kickoff"] = pg.game_id.map(kick)
+        pg = pg.join(sc[["away_team", "home_team", "away_score", "home_score"]], on="game_id")
+        now = pd.Timestamp.now(tz="America/New_York")
+        pg = pg[(pg.kickoff <= now) | pg.game_id.isin(g.game_id if len(g) else [])]
+        pg["Game"] = pg.away_team + " @ " + pg.home_team
+        final = pg.home_score.notna()
+        pg["Score"] = np.where(final, pg.away_team + " " + pg.away_score.fillna(0).astype(int).astype(str) + " – "
+                               + pg.home_team + " " + pg.home_score.fillna(0).astype(int).astype(str),
+                               pg.kickoff.dt.strftime("%a %b %-d, %-I:%M %p"))
+        cols = ["game_id", "market", "side", "line", "odds", "handle_pct", "bets_pct", "result", "hours_before"]
+        rows = pg.merge(g[cols] if len(g) else pd.DataFrame(columns=cols), on="game_id", how="left")
+        rows["Bet"] = np.select(
+            [rows.market == "moneyline", rows.market == "spread", rows.market == "total"],
+            [rows.side + " ML",
+             rows.side + " " + rows.line.map(lambda x: f"{x:+g}" if pd.notna(x) else ""),
+             rows.side.str.title() + " " + rows.line.map(lambda x: f"{x:g}" if pd.notna(x) else "")],
+            default="No splits captured")
+        rows["Result"] = rows.result.map({"won": "✅ Won", "lost": "❌ Lost", "push": "➖ Push",
+                                          "pending": "⏳ Pending"}).fillna("")
+        rows["Money − Bets"] = rows.handle_pct - rows.bets_pct
+        rows["market_order"] = rows.market.map({m: i for i, m in enumerate(MARKETS)})
+        rows = rows.sort_values(["kickoff", "market_order", "handle_pct"], ascending=[False, True, False])
+        tracked, untracked = rows[rows.market.notna()], rows[rows.market.isna()]
+
+        st.subheader("Every prime-time game")
+        if tracked.empty:
+            st.info("No splits captured yet for these games.")
+        st.markdown(splits_legend(), unsafe_allow_html=True)
+        meta = team_meta()
+        card_games = list(tracked.groupby("game_id", sort=False))
+        for i in range(0, len(card_games), 2):
+            for col, (gid, sides) in zip(st.columns(2), card_games[i:i + 2]):
+                col.markdown(splits_card(sides, meta), unsafe_allow_html=True)
+
+        if len(tracked):
+            with st.expander("All splits as a table (sortable, downloadable)"):
+                show = tracked.rename(columns={"week": "Week", "slot": "Slot", "market": "Market", "odds": "Odds",
+                                               "handle_pct": "Money %", "bets_pct": "Bets %",
+                                               "hours_before": "Hrs before kickoff"})
+                show["Market"] = show.Market.str.title()
+                st.dataframe(show[["Week", "Slot", "Game", "Score", "Market", "Bet", "Odds", "Money %", "Bets %",
+                                   "Money − Bets", "Result", "Hrs before kickoff"]],
+                             hide_index=True, use_container_width=True,
+                             column_config={
+                                 "Odds": st.column_config.NumberColumn(format="%+d"),
+                                 "Money %": st.column_config.ProgressColumn(min_value=0, max_value=100, format="%.0f%%"),
+                                 "Bets %": st.column_config.ProgressColumn(min_value=0, max_value=100, format="%.0f%%"),
+                                 "Money − Bets": st.column_config.NumberColumn(
+                                     format="%+.0f", help="Money share minus bet share, in points. Positive = "
+                                                          "bigger average wager on this side."),
+                                 "Hrs before kickoff": st.column_config.NumberColumn(
+                                     format="%.1f", help="How long before kickoff the splits snapshot was taken."),
+                             })
+        if len(untracked):
+            st.markdown(f"**Played before splits tracking began** ({len(untracked)} games)")
+            st.caption("DraftKings only shows splits for upcoming games, so these can't be filled in after the fact.")
+            st.dataframe(untracked[["week", "slot", "Game", "Score"]].rename(
+                columns={"week": "Week", "slot": "Slot", "Score": "Final"}), hide_index=True, use_container_width=True)
+
+        # ---- does the bigger-wager side win more?
+        if not done.empty:
+            st.subheader("Money share vs. bet share")
+            pts = majority_record(done, "handle_pct").copy()
+            pts["Game"] = pts.away_team + " @ " + pts.home_team
+            pts["Market"] = pts.market.str.title()
+            pts["Result"] = pts.result.str.title()
+            pts["Bet"] = np.where(pts.market == "total", pts.side.str.title(), pts.side)
+            dots = alt.Chart(pts).mark_point(size=90, filled=True, opacity=0.9).encode(
+                x=alt.X("bets_pct:Q", title="% of bets", scale=alt.Scale(domain=[0, 100])),
+                y=alt.Y("handle_pct:Q", title="% of money", scale=alt.Scale(domain=[0, 100])),
+                color=alt.Color("Result:N", scale=alt.Scale(domain=["Won", "Lost", "Push"], range=[BLUE, RED, GRAY]),
+                                legend=alt.Legend(title=None)),
+                shape=alt.Shape("Market:N", legend=alt.Legend(title=None)),
+                tooltip=["week", "slot", "Game", "Market", "Bet", "line", "odds",
+                         alt.Tooltip("handle_pct:Q", title="% money"), alt.Tooltip("bets_pct:Q", title="% bets"),
+                         "Result"])
+            diag = alt.Chart(pd.DataFrame({"x": [0, 100], "y": [0, 100]})).mark_line(
+                color=GRAY, strokeDash=[4, 4], strokeWidth=1).encode(x="x:Q", y="y:Q")
+            st.altair_chart(style(diag + dots, 360), use_container_width=True)
+            st.caption("One dot per game and market: the side holding most of the money. Above the dashed line, "
+                       "that side's money share beats its bet share (bigger tickets); below it, the side is "
+                       "popular with many small bets but holds less of the money.")
 
 # ================================================================ Model
 elif page == "Model":

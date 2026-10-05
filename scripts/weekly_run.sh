@@ -24,11 +24,14 @@ fi
 "$PY" -m src.predict --refresh --top 3 || { echo "predict failed"; exit 1; }
 "$PY" -m src.track | tail -8
 
+# Early snapshot of prime-time betting splits (the pre-kickoff ones come from splits_run.sh).
+"$PY" -m src.splits || echo "Splits capture failed."
+
 # Update the hosted dashboard's data (GitHub Release "dashboard-data").
 "$PY" -m src.publish 2>&1 | tail -1 || echo "Publishing dashboard data failed."
 
 # Commit and push the pregame record (predictions + live-test tracking).
-git add reports/predictions reports/live_tracking.csv
+git add reports/predictions reports/live_tracking.csv reports/prime_time_splits.csv reports/prime_time_games.csv
 if git diff --cached --quiet; then
   echo "No changes to commit."
 else

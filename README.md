@@ -42,6 +42,7 @@ src/
   qb_status.py      is the listed starting QB actually available? (injury report, roster, depth chart)
   coverage.py       man/zone and coverage-type analytics from nflverse participation data (2018+)
   spread.py         predicted point spread (margin), cover probabilities, record against the spread
+  splits.py         prime-time (TNF/SNF/MNF) betting splits from DraftKings: % of money vs. % of bets, graded
 notebooks/
   01_data_exploration.ipynb
   02_features.ipynb
@@ -52,9 +53,10 @@ app/
   dashboard.py      interactive dashboard (streamlit run app/dashboard.py)
 tests/
   test_leakage.py   proves features only use information from before kickoff
+  test_splits.py    DraftKings splits parsing and grading
 data/               downloaded data (git-ignored)
 models/             tuned feature settings (tracked) and trained models (git-ignored)
-reports/            evaluation results and weekly predictions (reports/predictions/)
+reports/            evaluation results, weekly predictions (reports/predictions/), prime-time betting splits
 ```
 
 ## Setup
@@ -86,7 +88,8 @@ Each run:
 1. refreshes the current season's data
 2. runs `src.predict`, which also records both live-test models before kickoff
 3. prints the live scoreboards
-4. commits and pushes `reports/predictions/` and `reports/live_tracking.csv`
+4. takes an early snapshot of prime-time betting splits
+5. commits and pushes `reports/predictions/`, `reports/live_tracking.csv` and the splits files
 
 The commit history is a timestamped record showing the predictions were made before the games. If the Mac is asleep at a scheduled time, the run happens when it wakes. Output goes to `logs/weekly_run.log`.
 
@@ -96,6 +99,8 @@ launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.nflpredictor.weekly.
 launchctl kickstart gui/$(id -u)/com.nflpredictor.weekly                                 # run now
 launchctl bootout gui/$(id -u)/com.nflpredictor.weekly                                   # uninstall
 ```
+
+A second LaunchAgent, `scripts/com.nflpredictor.splits.plist`, runs `scripts/splits_run.sh` on Thursday, Sunday and Monday at 7:00 PM and 8:00 PM. Each run snapshots the DraftKings betting splits for prime-time games that haven't kicked off, then commits and pushes `reports/prime_time_splits.csv`. Output goes to `logs/splits_run.log`. Install it the same way, with `splits` in place of `weekly`.
 
 The project must live outside `~/Documents`, `~/Desktop` and `~/Downloads`, because macOS blocks background jobs from reading those folders. The paths in the plist point to `~/Projects/NFLGamePredictorModel`. Next season, update `CURRENT_SEASON` in `src/config.py`.
 
@@ -178,7 +183,16 @@ To run it locally, `streamlit run app/dashboard.py` opens the same dashboard:
 | Situational | Win rates by body-clock kickoff time, time zones traveled, cold shock, wind, and fatigue |
 | Team Analytics | 3rd-down conversion (offense vs. defense), 4th-down aggressiveness and success, man vs. zone usage, coverage mix (Cover 0/1/2/3/4/6…), and offense vs. man and zone, for any team and season |
 | Matchups | QB bad-weather sensitivity ranking; pressure map (protection vs. pass rush, with any team's trend by season); offense vs. the blitz; live 2026 test week by week |
+| Prime Time | Every TNF, SNF and MNF game. Each card shows the moneyline, spread and total, with each side's share of the money (% handle) and of the bets (% bets) at DraftKings, and checks the side that won. A scoreboard shows how the side with the most bets did against the side with the most money, including games where the two disagree |
 | Model | Calibration, log loss by season, and the model's weights |
+
+### Prime-time betting splits
+
+`python -m src.splits` saves the current DraftKings splits for upcoming prime-time games to `reports/prime_time_splits.csv`. `python -m src.splits --report` prints the season's record for the public side and the money side.
+- **Which games:** the TNF, SNF and MNF schedules on [Champs or Chumps](https://champsorchumps.us/nfl). If that site is down, it falls back to Thursday, Sunday and Monday night kickoffs in the nflverse schedule. Champs or Chumps doesn't count the season-opening Thursday game or the Thanksgiving night game as TNF.
+- **Splits:** the [DraftKings Sportsbook Betting Splits](https://dknetwork.draftkings.com/draftkings-sportsbook-betting-splits/) table. It gives % Handle (share of the money) and % Bets (share of the wagers) for the moneyline, spread and total, all jurisdictions combined. It has no player props.
+- **Grading:** each game is graded from the last snapshot before kickoff, against that snapshot's spread or total, using nflverse final scores.
+- **Limits:** DraftKings only shows upcoming games, so splits have to be captured before kickoff. Games played before tracking started (2026 weeks 1–4 except Week 4 MNF) have no splits. Only one partial archived snapshot exists for them, so they can't be backfilled.
 
 ## Features
 
@@ -350,5 +364,6 @@ Each group was added separately and kept only if it improved log loss on the tun
 - [x] Matchup features: QB weather sensitivity (in the model), pass protection vs. pass rush (not helpful), blitz vulnerability (live 2026 test running)
 - [x] QB availability checks, current-season weighting, defensive playmaker availability
 - [x] Point spreads, team analytics (3rd/4th downs, man vs. zone), This Week page with waterfall explanations
+- [x] Prime-time betting splits (DraftKings % money vs. % bets for TNF/SNF/MNF), captured before kickoff and graded
 - [ ] End of the 2026 regular season: apply the pre-set blitz rule (`python -m src.track`) and review the live record against the spread
 - [ ] After nflverse publishes 2026 coverage data: `python -m src.coverage`
