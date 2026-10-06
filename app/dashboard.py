@@ -1376,21 +1376,30 @@ elif page == "Prime Time":
                                     placeholder="Pick groups to fade into the background")
             pts["faded"] = pts[gray_by].isin(grayed)
 
-            x = alt.X("bets_pct:Q", title="% of bets", scale=alt.Scale(domain=[0, 100]))
-            y = alt.Y("handle_pct:Q", title="% of money", scale=alt.Scale(domain=[0, 100]))
-            shape = alt.Shape("Market:N", scale=alt.Scale(domain=["Moneyline", "Spread", "Total"]),
-                              legend=alt.Legend(title=None))
-            tip = ["Season", "week", "Slot", "Game", "Market", "Bet", "line", "odds",
-                   alt.Tooltip("handle_pct:Q", title="% money"), alt.Tooltip("bets_pct:Q", title="% bets"), "Result"]
-            faded = alt.Chart(pts[pts.faded]).mark_point(size=70, filled=True, opacity=0.35, color="#4a4a50").encode(
-                x=x, y=y, shape=shape, tooltip=tip)
-            lit = alt.Chart(pts[~pts.faded]).mark_point(size=90, filled=True, opacity=0.9).encode(
-                x=x, y=y, shape=shape, tooltip=tip,
-                color=alt.Color("Result:N", scale=alt.Scale(domain=["Won", "Lost", "Push"], range=[BLUE, RED, GRAY]),
-                                legend=alt.Legend(title=None)))
+            # One dataset for every dot (fading is an encoding, not a separate layer), and a key that changes
+            # with the selection: Streamlit's in-place chart update fails when a chart's datasets change.
+            pts["shade"] = np.where(pts.faded, "Grayed out", pts.Result)
+            pts["lit"] = (~pts.faded).astype(int)
+            shades = ["Won", "Lost", "Push"] + (["Grayed out"] if pts.faded.any() else [])
+            plot_cols = ["bets_pct", "handle_pct", "shade", "lit", "Market", "Season", "week", "Slot", "Game", "Bet",
+                         "line", "odds", "Result"]
+            dots = alt.Chart(pts.sort_values("lit")[plot_cols]).mark_point(filled=True).encode(
+                x=alt.X("bets_pct:Q", title="% of bets", scale=alt.Scale(domain=[0, 100])),
+                y=alt.Y("handle_pct:Q", title="% of money", scale=alt.Scale(domain=[0, 100])),
+                color=alt.Color("shade:N", scale=alt.Scale(domain=shades, range=[BLUE, RED, GRAY, "#4a4a50"][:len(shades)]),
+                                legend=alt.Legend(title=None)),
+                shape=alt.Shape("Market:N", scale=alt.Scale(domain=["Moneyline", "Spread", "Total"]),
+                                legend=alt.Legend(title=None)),
+                opacity=alt.condition(alt.datum.lit == 1, alt.value(0.9), alt.value(0.35)),
+                size=alt.condition(alt.datum.lit == 1, alt.value(90), alt.value(60)),
+                order=alt.Order("lit:Q"),
+                tooltip=["Season", "week", "Slot", "Game", "Market", "Bet", "line", "odds",
+                         alt.Tooltip("handle_pct:Q", title="% money"), alt.Tooltip("bets_pct:Q", title="% bets"),
+                         "Result"])
             diag = alt.Chart(pd.DataFrame({"x": [0, 100], "y": [0, 100]})).mark_line(
                 color=GRAY, strokeDash=[4, 4], strokeWidth=1).encode(x="x:Q", y="y:Q")
-            st.altair_chart(style(diag + faded + lit, 360), use_container_width=True)
+            chart_key = "pt_scatter_" + "_".join(map(str, [source, season_pt, slot, gray_by, *grayed]))
+            st.altair_chart(style(diag + dots, 360), use_container_width=True, key=chart_key)
             shown = pts[~pts.faded]
             above = shown[shown.handle_pct > shown.bets_pct]
             st.caption("One dot per game and market: the side holding most of the money. Above the dashed line, "
