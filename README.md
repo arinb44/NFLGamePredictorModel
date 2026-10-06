@@ -42,7 +42,7 @@ src/
   qb_status.py      is the listed starting QB actually available? (injury report, roster, depth chart)
   coverage.py       man/zone and coverage-type analytics from nflverse participation data (2018+)
   spread.py         predicted point spread (margin), cover probabilities, record against the spread
-  splits.py         prime-time (TNF/SNF/MNF) betting splits from DraftKings: % of money vs. % of bets, graded
+  splits.py         prime-time (TNF/SNF/MNF) betting splits (Action Network history, DraftKings live), public vs. Vegas
 notebooks/
   01_data_exploration.ipynb
   02_features.ipynb
@@ -183,16 +183,19 @@ To run it locally, `streamlit run app/dashboard.py` opens the same dashboard:
 | Situational | Win rates by body-clock kickoff time, time zones traveled, cold shock, wind, and fatigue |
 | Team Analytics | 3rd-down conversion (offense vs. defense), 4th-down aggressiveness and success, man vs. zone usage, coverage mix (Cover 0/1/2/3/4/6…), and offense vs. man and zone, for any team and season |
 | Matchups | QB bad-weather sensitivity ranking; pressure map (protection vs. pass rush, with any team's trend by season); offense vs. the blitz; live 2026 test week by week |
-| Prime Time | Every TNF, SNF and MNF game. Each card shows the moneyline, spread and total, with each side's share of the money (% handle) and of the bets (% bets) at DraftKings, and checks the side that won. A scoreboard shows how the side with the most bets did against the side with the most money, including games where the two disagree |
+| Prime Time | Public vs. Vegas for every TNF, SNF and MNF game since 2023. Each card shows the moneyline, spread and total, with each side's share of the money and of the bets. It checks the side that won and tags each market "Public won" or "Vegas won". The scoreboard gives the public side's record and units, with a minimum-public-share filter and a by-season table. It also shows the money side and games where money and bets disagree. Switch between Action Network (history) and DraftKings (captured before kickoff) |
 | Model | Calibration, log loss by season, and the model's weights |
 
 ### Prime-time betting splits
 
-`python -m src.splits` saves the current DraftKings splits for upcoming prime-time games to `reports/prime_time_splits.csv`. `python -m src.splits --report` prints the season's record for the public side and the money side.
+"The public" is the side with most of the bets (tickets). When it loses, the sportsbooks win ("Vegas won").
 - **Which games:** the TNF, SNF and MNF schedules on [Champs or Chumps](https://champsorchumps.us/nfl). If that site is down, it falls back to Thursday, Sunday and Monday night kickoffs in the nflverse schedule. Champs or Chumps doesn't count the season-opening Thursday game or the Thanksgiving night game as TNF.
-- **Splits:** the [DraftKings Sportsbook Betting Splits](https://dknetwork.draftkings.com/draftkings-sportsbook-betting-splits/) table. It gives % Handle (share of the money) and % Bets (share of the wagers) for the moneyline, spread and total, all jurisdictions combined. It has no player props.
-- **Grading:** each game is graded from the last snapshot before kickoff, against that snapshot's spread or total, using nflverse final scores.
-- **Limits:** DraftKings only shows upcoming games, so splits have to be captured before kickoff. Games played before tracking started (2026 weeks 1–4 except Week 4 MNF) have no splits. Only one partial archived snapshot exists for them, so they can't be backfilled.
+- **History:** [Action Network public betting](https://www.actionnetwork.com/public-betting) consensus % of money and % of tickets for finished games, saved to `reports/prime_time_public.csv`. Its splits start in 2023 week 5; 2023 weeks 1–4 are empty, and ten 2024 moneylines have no splits. `python -m src.splits --public 2023` backfills. Every scheduled run adds prime-time games that have finished.
+- **Live:** the [DraftKings Sportsbook Betting Splits](https://dknetwork.draftkings.com/draftkings-sportsbook-betting-splits/) table (% Handle and % Bets, all jurisdictions). It only shows upcoming games, so `python -m src.splits` snapshots it before kickoff into `reports/prime_time_splits.csv`, starting Oct 5, 2026. The last snapshot before kickoff is graded.
+- **Grading:** nflverse final scores, against the source's spread or total. Units are the profit from betting 1 unit on the side at its listed odds. On the moneyline the public mostly backs favorites, which win often but pay less, so units say more than the win rate.
+- `python -m src.splits --report` prints the public side's and the money side's records for both sources.
+
+Neither source has player props.
 
 ## Features
 
@@ -364,6 +367,6 @@ Each group was added separately and kept only if it improved log loss on the tun
 - [x] Matchup features: QB weather sensitivity (in the model), pass protection vs. pass rush (not helpful), blitz vulnerability (live 2026 test running)
 - [x] QB availability checks, current-season weighting, defensive playmaker availability
 - [x] Point spreads, team analytics (3rd/4th downs, man vs. zone), This Week page with waterfall explanations
-- [x] Prime-time betting splits (DraftKings % money vs. % bets for TNF/SNF/MNF), captured before kickoff and graded
+- [x] Prime-time betting splits, public vs. Vegas: Action Network history (2023+) and DraftKings captures before kickoff
 - [ ] End of the 2026 regular season: apply the pre-set blitz rule (`python -m src.track`) and review the live record against the spread
 - [ ] After nflverse publishes 2026 coverage data: `python -m src.coverage`

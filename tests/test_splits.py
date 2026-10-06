@@ -75,3 +75,35 @@ def test_public_side_vs_money_side():
     assert money["spread"] == "ATL" and bets["spread"] == "NO"
     split = disagreements(g)
     assert list(split.market) == ["spread"] and split.iloc[0].result == "won"
+
+
+def _an_outcome(market, side, team_id, value, odds, money, tickets):
+    return {"type": market, "side": side, "team_id": team_id, "value": value, "odds": odds,
+            "bet_info": {"money": {"value": 0, "percent": money}, "tickets": {"value": 0, "percent": tickets}}}
+
+
+def test_parse_action_maps_teams_and_drops_draws_and_empty_markets():
+    from src.splits import parse_action
+    lookup = {"Atlanta Falcons": "ATL", "New Orleans Saints": "NO"}
+    game = {"status": "complete", "season": 2026, "week": 4, "away_team_id": 1, "home_team_id": 2,
+            "teams": [{"id": 1, "full_name": "Atlanta Falcons"}, {"id": 2, "full_name": "New Orleans Saints"}],
+            "markets": {"15": {"event": {
+                "moneyline": [_an_outcome("moneyline", "away", 1, 0, -105, 0, 0),
+                              _an_outcome("moneyline", "home", 2, 0, -115, 0, 0),
+                              _an_outcome("moneyline", "draw", None, 0, 6000, 0, 0)],
+                "spread": [_an_outcome("spread", "away", 1, 1.5, -117, 75, 61),
+                           _an_outcome("spread", "home", 2, -1.5, -103, 25, 39)],
+                "total": [_an_outcome("total", "over", None, 47.5, -110, 75, 67),
+                          _an_outcome("total", "under", None, 47.5, -110, 25, 33)]}}}}
+    upcoming = {**game, "status": "scheduled"}
+    d = parse_action({"games": [game, upcoming]}, lookup)
+    assert set(d.market) == {"spread", "total"}  # the moneyline had no splits (all 0%)
+    sp = d[d.market == "spread"].set_index("side")
+    assert sp.loc["ATL", "line"] == 1.5 and sp.loc["ATL", "bets_pct"] == 61 and sp.loc["NO", "handle_pct"] == 25
+    assert set(d[d.market == "total"].side) == {"over", "under"}
+
+
+def test_units_pays_at_the_listed_odds():
+    from src.splits import units
+    df = pd.DataFrame({"odds": [150, -200, -110, 120], "result": ["won", "won", "lost", "push"]})
+    assert abs(units(df) - (1.5 + 0.5 - 1.0)) < 1e-9

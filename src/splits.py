@@ -5,22 +5,31 @@ Sources:
   - Which games are prime time: Champs or Chumps' TNF/SNF/MNF schedule pages
     (champsorchumps.us/nfl). Falls back to the nflverse schedule (Thu/Sun/Mon night
     kickoffs) if the site can't be reached.
-  - Splits: the DraftKings Sportsbook Betting Splits table (dknetwork.draftkings.com),
+  - Historical splits: Action Network's public betting data (actionnetwork.com/public-betting),
+    consensus % of money and % of tickets for the moneyline, spread and total of finished
+    games, 2023 onward. Saved to reports/prime_time_public.csv.
+  - Live splits: the DraftKings Sportsbook Betting Splits table (dknetwork.draftkings.com),
     which shows, for the moneyline, spread and total of each upcoming game,
     % Handle (share of the money wagered) and % Bets (share of the number of wagers),
     all jurisdictions combined.
 
-DraftKings only shows upcoming games, so splits must be captured before kickoff.
+DraftKings only shows upcoming games, so its splits must be captured before kickoff.
 Every capture appends a snapshot to reports/prime_time_splits.csv; the last snapshot
-taken before kickoff is the one graded. Results are graded from nflverse final scores
-against the line at that snapshot (the spread or total the bettors actually got).
+taken before kickoff is the one graded. Action Network keeps finished games, so those
+are fetched after the game. Results are graded from nflverse final scores against the
+source's line (the spread or total the bettors got).
+
+"The public" is the side with the majority of bets (tickets). When it loses, the
+sportsbooks win: "Vegas won".
 
 Usage:
-    python -m src.splits             # capture current splits for upcoming prime-time games
+    python -m src.splits             # capture DraftKings splits + add finished games from Action Network
+    python -m src.splits --public 2023   # backfill Action Network splits from 2023 on
     python -m src.splits --report    # record of the public side vs the money side
 """
 import argparse
 import re
+import time
 from html import unescape
 
 import numpy as np
@@ -31,6 +40,9 @@ from src.config import CURRENT_SEASON, ROOT
 
 DK_URL = "https://dknetwork.draftkings.com/draftkings-sportsbook-betting-splits/"
 DK_NFL = "88808"  # DraftKings event group for the NFL
+AN_URL = "https://api.actionnetwork.com/web/v2/scoreboard/publicbetting/nfl"
+AN_BOOK = "15"  # Action Network's consensus book
+AN_FIRST_SEASON = 2023  # earlier seasons have no splits
 COC_URL = "https://champsorchumps.us/nfl/{}"
 SLOT_PAGES = {"TNF": "thursday-night-football-games", "SNF": "sunday-night-football-games",
               "MNF": "monday-night-football-games"}
@@ -39,6 +51,7 @@ HEADERS = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleW
                          "(KHTML, like Gecko) Chrome/129.0 Safari/537.36"}
 
 SPLITS_PATH = ROOT / "reports" / "prime_time_splits.csv"
+PUBLIC_PATH = ROOT / "reports" / "prime_time_public.csv"
 GAMES_PATH = ROOT / "reports" / "prime_time_games.csv"
 SPLIT_COLS = ["captured_at", "game_id", "market", "side", "line", "odds", "handle_pct", "bets_pct", "source"]
 MARKETS = ("moneyline", "spread", "total")
@@ -209,10 +222,94 @@ def load_splits() -> pd.DataFrame:
     return pd.DataFrame(columns=SPLIT_COLS)
 
 
-# ---------------------------------------------------------------- grading
-def graded(splits: pd.DataFrame, pt_games: pd.DataFrame, sched: pd.DataFrame) -> pd.DataFrame:
-    """The last pre-kickoff snapshot of every prime-time game, each side graded.
+# ---------------------------------------------------------------- Action Network (historical)
+def _get_json(url: str, tries: int = 4, **params) -> dict:
+    """GET with backoff; the API answers bursts with 504s or empty bodies."""
+    for i in range(tries):
+        try:
+            r = requests.get(url, params=params, headers={**HEADERS, "Accept": "application/json"}, timeout=60)
+            if r.ok and r.text.strip():
+                return r.json()
+        except requests.RequestException:
+            pass
+        time.sleep(5 * (i + 1))
+    raise requests.RequestException(f"no response from {url} {params}")
 
+
+def parse_action(data: dict, lookup: dict) -> pd.DataFrame:
+    """One row per finished game, market and side: consensus % money and % tickets."""
+    rows = []
+    for g in data.get("games", []):
+        if g.get("status") != "complete":
+            continue
+        team = {t["id"]: lookup.get(t["full_name"]) for t in g.get("teams", [])}
+        event = g.get("markets", {}).get(AN_BOOK, {}).get("event", {})
+        for market in MARKETS:
+            for o in event.get(market, []):
+                info = o.get("bet_info") or {}
+                rows.append({"season": g["season"], "week": g["week"], "away": team.get(g["away_team_id"]),
+                             "home": team.get(g["home_team_id"]), "market": market,
+                             "side": o["side"] if market == "total" else team.get(o.get("team_id")),
+                             "line": o.get("value") if market != "moneyline" else np.nan, "odds": o.get("odds"),
+                             "handle_pct": (info.get("money") or {}).get("percent"),
+                             "bets_pct": (info.get("tickets") or {}).get("percent")})
+    df = pd.DataFrame(rows, columns=["season", "week", "away", "home", "market", "side", "line", "odds",
+                                     "handle_pct", "bets_pct"])
+    return clean_action(df, ["season", "week", "away", "home", "market"])
+
+
+def clean_action(df: pd.DataFrame, market_key: list) -> pd.DataFrame:
+    """Drop sides that aren't a team or over/under (some moneylines list a draw) and markets
+    with no splits recorded (every side at 0% of money and bets)."""
+    df = df[df.side.notna()]
+    empty = df.assign(z=(df.handle_pct.fillna(0) == 0) & (df.bets_pct.fillna(0) == 0)) \
+        .groupby(market_key).z.transform("all")
+    return df[~empty]
+
+
+def load_public() -> pd.DataFrame:
+    if PUBLIC_PATH.exists():
+        return pd.read_csv(PUBLIC_PATH)
+    return pd.DataFrame(columns=SPLIT_COLS)
+
+
+def update_public(seasons, pause: float = 3.0) -> pd.DataFrame:
+    """Add Action Network splits for finished prime-time games not saved yet.
+    Only weeks that have such games are requested."""
+    from src.data_loader import load_schedules
+    sched = load_schedules()
+    lookup = _team_lookup()
+    stored = load_public()
+    new = []
+    for season in seasons:
+        pt = update_games(season)
+        pt = pt[pt.season == season].merge(sched[["game_id", "away_team", "home_team", "home_score"]], on="game_id")
+        todo = pt[pt.home_score.notna() & ~pt.game_id.isin(stored.game_id)]
+        for week in sorted(todo.week.unique()):
+            an = parse_action(_get_json(AN_URL, bookIds=AN_BOOK, season=season, week=int(week),
+                                        seasonType="reg"), lookup)
+            # match on the pair of teams: neutral-site games can be listed home/away the other way round
+            an["pair"] = ["-".join(sorted(map(str, t))) for t in zip(an.away, an.home)]
+            wk = todo[todo.week == week]
+            wk = wk.assign(pair=["-".join(sorted(t)) for t in zip(wk.away_team, wk.home_team)])
+            hit = an.merge(wk[["game_id", "pair"]], on="pair")
+            new.append(hit[hit.bets_pct.notna()])
+            time.sleep(pause)
+    if not new or not sum(len(n) for n in new):
+        return stored.iloc[0:0]
+    now = pd.Timestamp.now(tz="UTC").strftime("%Y-%m-%dT%H:%M:%SZ")
+    add = pd.concat(new, ignore_index=True).assign(captured_at=now, source="action_network")[SPLIT_COLS]
+    (pd.concat([stored, add], ignore_index=True) if len(stored) else add).to_csv(PUBLIC_PATH, index=False)
+    return add
+
+
+# ---------------------------------------------------------------- grading
+def graded(splits: pd.DataFrame, pt_games: pd.DataFrame, sched: pd.DataFrame,
+           before_kickoff: bool = True) -> pd.DataFrame:
+    """The last snapshot of every prime-time game, each side graded.
+
+    before_kickoff: only snapshots taken before kickoff count (DraftKings captures).
+    Action Network's numbers for finished games are already as of kickoff, so pass False.
     result: "won" / "lost" / "push", or "pending" until the game is final.
     """
     if splits.empty:
@@ -221,7 +318,8 @@ def graded(splits: pd.DataFrame, pt_games: pd.DataFrame, sched: pd.DataFrame) ->
     s = splits.copy()
     s["captured_at"] = pd.to_datetime(s.captured_at, utc=True)
     s["kickoff"] = s.game_id.map(kick)
-    s = s[s.captured_at < s.kickoff]
+    if before_kickoff:
+        s = s[s.captured_at < s.kickoff]
     last = s.groupby("game_id").captured_at.transform("max")
     s = s[s.captured_at == last]
     sc = sched.set_index("game_id")
@@ -234,7 +332,7 @@ def graded(splits: pd.DataFrame, pt_games: pd.DataFrame, sched: pd.DataFrame) ->
     edge = np.select([s.market == "moneyline", s.market == "spread", s.side == "over"],
                      [margin, margin + s.line, total - s.line], default=s.line - total)
     s["result"] = np.select([pd.isna(edge), edge > 0, edge < 0], ["pending", "won", "lost"], default="push")
-    s["hours_before"] = (s.kickoff - s.captured_at).dt.total_seconds() / 3600
+    s["hours_before"] = (s.kickoff - s.captured_at).dt.total_seconds() / 3600 if before_kickoff else np.nan
     return s.sort_values(["kickoff", "game_id", "market", "side"]).reset_index(drop=True)
 
 
@@ -255,6 +353,13 @@ def disagreements(g: pd.DataFrame) -> pd.DataFrame:
     return both[both.side != both.side_bets].drop(columns="side_bets")
 
 
+def units(df: pd.DataFrame) -> float:
+    """Profit from betting 1 unit on every row's side at its listed odds (pushes return the stake)."""
+    odds = df.odds.astype(float)
+    win = np.where(odds > 0, odds / 100, 100 / odds.abs())
+    return float(np.select([df.result == "won", df.result == "lost"], [win, -1.0], 0.0).sum())
+
+
 def record(df: pd.DataFrame) -> str:
     w, l, p = (df.result == "won").sum(), (df.result == "lost").sum(), (df.result == "push").sum()
     rate = f" ({w / (w + l):.0%})" if w + l else ""
@@ -263,22 +368,35 @@ def record(df: pd.DataFrame) -> str:
 
 def report():
     from src.data_loader import load_schedules
-    g = graded(load_splits(), pd.read_csv(GAMES_PATH), load_schedules())
-    done = g[g.result != "pending"]
-    print(f"{done.game_id.nunique()} graded prime-time games, {g[g.result == 'pending'].game_id.nunique()} pending")
-    for m in MARKETS:
-        gm = done[done.market == m]
-        print(f"  {m:<9}  majority of bets: {record(majority_record(gm, 'bets_pct')):<14}"
-              f"majority of money: {record(majority_record(gm, 'handle_pct')):<14}"
-              f"money vs bets split, money side: {record(disagreements(gm))}")
+    sched, pt = load_schedules(), pd.read_csv(GAMES_PATH)
+    for name, splits, before in [("Action Network", load_public(), False), ("DraftKings", load_splits(), True)]:
+        g = graded(splits, pt, sched, before_kickoff=before)
+        done = g[g.result != "pending"] if len(g) else g
+        print(f"{name}: {done.game_id.nunique() if len(done) else 0} graded prime-time games")
+        for m in MARKETS:
+            gm = done[done.market == m] if len(done) else done
+            if len(gm):
+                print(f"  {m:<9}  public side (most bets): {record(majority_record(gm, 'bets_pct')):<16}"
+                      f"money side: {record(majority_record(gm, 'handle_pct')):<16}"
+                      f"money vs bets split, money side: {record(disagreements(gm))}")
 
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--report", action="store_true", help="print the record instead of capturing")
+    ap.add_argument("--public", type=int, metavar="FIRST_SEASON",
+                    help=f"backfill Action Network splits from this season on (earliest {AN_FIRST_SEASON})")
     args = ap.parse_args()
     if args.report:
         report()
+    elif args.public:
+        add = update_public(range(max(args.public, AN_FIRST_SEASON), CURRENT_SEASON + 1))
+        print(f"Added Action Network splits for {add.game_id.nunique()} prime-time game(s)")
     else:
         snap = capture()
         print(f"Captured {snap.game_id.nunique()} prime-time game(s): {', '.join(sorted(snap.game_id.unique())) or '-'}")
+        try:
+            add = update_public([CURRENT_SEASON])
+            print(f"Action Network: added {add.game_id.nunique()} finished prime-time game(s)")
+        except requests.RequestException as e:
+            print(f"Action Network unavailable ({e}); will retry next run.")

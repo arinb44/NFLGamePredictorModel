@@ -340,9 +340,10 @@ def splits_legend():
             f'<span style="margin-left:14px">✓ = the side that won (or covered / hit)</span></div>')
 
 
-def splits_card(sides: pd.DataFrame, meta: dict) -> str:
+def splits_card(sides: pd.DataFrame, meta: dict, source: str) -> str:
     """One prime-time game: each side of the moneyline, spread and total with its share of
-    the money and of the bets; winning sides are checked."""
+    the money and of the bets; winning sides are checked, and each market is tagged with
+    whether the public (the side with most bets) or the book won."""
     r = sides.iloc[0]
 
     def logo(team):
@@ -350,8 +351,9 @@ def splits_card(sides: pd.DataFrame, meta: dict) -> str:
                 f'style="height:26px;vertical-align:middle;margin:0 6px">')
 
     pending = (sides.result == "pending").all()
-    when = (f"splits {r.hours_before:.1f} h before kickoff" if pending
-            else f"final · splits {r.hours_before:.1f} h before kickoff")
+    when = (f"Action Network consensus splits" if pd.isna(r.hours_before)
+            else f"{source} splits {r.hours_before:.1f} h before kickoff")
+    when = when if pending else "final · " + when
     head = (f'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">'
             f'<div style="font-size:17px;font-weight:700">{logo(r.away_team)}{r.away_team} @ {r.home_team}'
             f'{logo(r.home_team)}</div>'
@@ -359,10 +361,18 @@ def splits_card(sides: pd.DataFrame, meta: dict) -> str:
             f'<span style="color:#fff;font-weight:600">{r.Score}</span></div></div>'
             f'<div style="font-size:12px;color:{TEXT_2};margin-bottom:4px">{when}</div>')
     grid = "display:grid;grid-template-columns:minmax(96px,1.1fr) 1fr 1fr 18px;gap:10px;align-items:center"
-    body = ""
+    small = f"font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:{TEXT_2}"
+    body = f'<div style="{grid};{small}"><span></span><span>Money</span><span>Bets</span><span></span></div>'
     for market, m in sides.groupby("market", sort=False):
-        body += (f'<div style="{grid};margin-top:8px;font-size:11px;text-transform:uppercase;letter-spacing:.06em;'
-                 f'color:{TEXT_2}"><span>{market}</span><span>Money</span><span>Bets</span><span></span></div>')
+        public = m[m.bets_pct == m.bets_pct.max()]
+        tag = ""
+        if len(public) == 1 and public.result.iloc[0] in ("won", "lost", "push"):
+            res = public.result.iloc[0]
+            text, color = {"won": ("Public won", ORANGE), "lost": ("Vegas won", BLUE), "push": ("Push", GRAY)}[res]
+            tag = (f'<span style="padding:1px 6px;border-radius:8px;border:1px solid {color};color:{color};'
+                   f'letter-spacing:.04em">{text}</span>')
+        body += (f'<div style="{small};display:flex;align-items:center;gap:8px;margin-top:8px">'
+                 f'<span>{market}</span>{tag}</div>')
         for s in m.itertuples():
             odds = f"{s.odds:+.0f}".replace("-", "−") if pd.notna(s.odds) else ""
             label = s.Bet.replace(" ML", "")
@@ -1177,45 +1187,83 @@ elif page == "Matchups":
 # ================================================================ Prime Time
 elif page == "Prime Time":
     from src.data_loader import load_schedules
-    from src.splits import (GAMES_PATH, MARKETS, disagreements, graded, kickoff_times, load_splits,
-                            majority_record, record)
+    from src.splits import (GAMES_PATH, MARKETS, disagreements, graded, kickoff_times, load_public, load_splits,
+                            majority_record, record, units)
 
     st.caption("Thursday, Sunday and Monday night games: the share of the money (**% handle**) and of the wagers "
-               "(**% bets**) on each side at DraftKings, and which side won. When a side's share of the money is "
-               "bigger than its share of the bets, fewer but larger wagers are on it (often read as sharper money). "
-               "Sources: DraftKings Sportsbook Betting Splits (all jurisdictions), Champs or Chumps (prime-time "
-               "slate), nflverse (final scores).")
+               "(**% bets**) on each side, and who won. **The public** is the side with most of the bets; when it "
+               "loses, the sportsbooks win (**Vegas won**). When a side's share of the money is bigger than its share "
+               "of the bets, fewer but larger wagers are on it (often read as sharper money). Sources: Action Network "
+               "public betting (consensus, 2023 on), DraftKings Sportsbook Betting Splits (captured before kickoff "
+               "since Oct 5, 2026), Champs or Chumps (prime-time slate), nflverse (final scores).")
     if not GAMES_PATH.exists():
         st.info("Run `python -m src.splits` to capture prime-time betting splits.")
     else:
         pt_games = pd.read_csv(GAMES_PATH)
         sched = load_schedules()
-        g = graded(load_splits(), pt_games, sched)
 
-        c1, c2 = st.columns([1, 2])
+        c1, c2, c3 = st.columns([1.3, 1, 1.4])
+        source = c1.radio("Splits", ["Action Network", "DraftKings"], horizontal=True, key="pt_source",
+                          help="Action Network: consensus splits across books, every prime-time game since 2023. "
+                               "DraftKings: DraftKings' own splits, captured shortly before kickoff (from Oct 5, 2026).")
+        an = source == "Action Network"
+        g_all = graded(load_public() if an else load_splits(), pt_games, sched, before_kickoff=not an)
         seasons = sorted(pt_games.season.unique(), reverse=True)
-        season_pt = c1.selectbox("Season", seasons, key="pt_season")
-        slot = c2.radio("Slot", ["All", "TNF", "SNF", "MNF"], horizontal=True, key="pt_slot")
-        pg = pt_games[(pt_games.season == season_pt) & ((pt_games.slot == slot) if slot != "All" else True)].copy()
-        g = g[g.game_id.isin(pg.game_id)] if len(g) else g
+        season_pt = c2.selectbox("Season", ["All seasons"] + seasons, index=1, key="pt_season")
+        slot = c3.radio("Slot", ["All", "TNF", "SNF", "MNF"], horizontal=True, key="pt_slot")
+        in_slot = pt_games[(pt_games.slot == slot) if slot != "All" else pt_games.slot.notna()]
+        pg = in_slot[in_slot.season == season_pt].copy() if season_pt != "All seasons" else in_slot.copy()
+        g = g_all[g_all.game_id.isin(pg.game_id)] if len(g_all) else g_all
         done = g[g.result != "pending"] if len(g) else g
 
-        st.subheader("Who won: the public side or the money side?")
+        # ---- public vs. Vegas
+        st.subheader("Public vs. Vegas")
         if done.empty:
-            st.info("No graded games yet. Splits are captured before each prime-time kickoff and graded once "
-                    "the final score is in.")
+            st.info("No graded games yet for this selection. Splits are graded once the final score is in.")
         else:
+            min_share = st.slider("Only count games where the public side had at least this share of the bets",
+                                  50, 90, 50, step=5, format="%d%%", key="pt_min_share")
+            public = majority_record(done, "bets_pct")
+            public = public[public.bets_pct >= min_share]
+            cols = st.columns(3)
+            for col, m in zip(cols, ("spread", "moneyline", "total")):
+                pm = public[public.market == m]
+                u = units(pm)
+                col.metric(f"{m.title()}: public side", record(pm) if len(pm) else "–",
+                           f"{u:+.1f} units" if len(pm) else None,
+                           help="W-L(-push) of the side with most of the bets. Units = profit from betting 1 unit "
+                                "on every public side at the listed odds; negative means the books came out ahead.")
+            n_graded = done.game_id.nunique()
+            st.caption(f"{n_graded} graded game{'s' if n_graded != 1 else ''}. Spreads and totals are graded against "
+                       "the line the source listed, so a side can cover at one number and not another. 50/50 splits "
+                       "are left out. On the moneyline the public mostly backs favorites, which win often but pay "
+                       "less, so units say more than the win rate.")
+
             summary = pd.DataFrame([{
                 "Market": m.title(),
-                "Side with most bets": record(majority_record(done[done.market == m], "bets_pct")),
-                "Side with most money": record(majority_record(done[done.market == m], "handle_pct")),
+                "Public side (most bets)": record(majority_record(done[done.market == m], "bets_pct")),
+                "Public units": units(majority_record(done[done.market == m], "bets_pct")),
+                "Money side (most money)": record(majority_record(done[done.market == m], "handle_pct")),
+                "Money side units": units(majority_record(done[done.market == m], "handle_pct")),
                 "Money and bets disagree: money side": record(disagreements(done[done.market == m])),
             } for m in MARKETS])
-            st.dataframe(summary, hide_index=True, use_container_width=True)
-            n_graded = done.game_id.nunique()
-            st.caption(f"{n_graded} graded game{'s' if n_graded != 1 else ''}. Records are W-L(-push) with win rate. "
-                       "Spreads and totals are graded against the line in the snapshot, so a side can cover at "
-                       "one number and not another. 50/50 splits are left out.")
+            st.dataframe(summary, hide_index=True, use_container_width=True,
+                         column_config={"Public units": st.column_config.NumberColumn(format="%+.1f"),
+                                        "Money side units": st.column_config.NumberColumn(format="%+.1f")})
+
+            by_season = g_all[g_all.game_id.isin(in_slot.game_id) & (g_all.result != "pending")].merge(
+                pt_games[["game_id", "season"]], on="game_id")
+            if by_season.season.nunique() > 1:
+                with st.expander("Public side by season"):
+                    pub = majority_record(by_season, "bets_pct")
+                    pub = pub[pub.bets_pct >= min_share]
+                    tbl = pd.DataFrame([{"Season": int(season), **{m.title(): f"{record(x[x.market == m])} · "
+                                                                              f"{units(x[x.market == m]):+.1f}u"
+                                                                   for m in ("spread", "moneyline", "total")}}
+                                        for season, x in pub.groupby("season")]).sort_values("Season", ascending=False)
+                    st.dataframe(tbl, hide_index=True, use_container_width=True)
+                    st.caption("Record of the side with most of the bets, and units won (+) or lost (−) betting it, "
+                               "for the slot and minimum public share selected above.")
 
         # ---- every game, every market
         kick = kickoff_times(sched).dt.tz_convert("America/New_York")
@@ -1236,48 +1284,61 @@ elif page == "Prime Time":
             [rows.side + " ML",
              rows.side + " " + rows.line.map(lambda x: f"{x:+g}" if pd.notna(x) else ""),
              rows.side.str.title() + " " + rows.line.map(lambda x: f"{x:g}" if pd.notna(x) else "")],
-            default="No splits captured")
+            default="No splits")
         rows["Result"] = rows.result.map({"won": "✅ Won", "lost": "❌ Lost", "push": "➖ Push",
                                           "pending": "⏳ Pending"}).fillna("")
         rows["Money − Bets"] = rows.handle_pct - rows.bets_pct
+        top_bets = rows.groupby(["game_id", "market"]).bets_pct.transform("max")
+        n_top = rows[rows.bets_pct == top_bets].groupby(["game_id", "market"]).bets_pct.transform("size")
+        rows["Public side"] = (rows.bets_pct == top_bets) & (n_top.reindex(rows.index).fillna(0) == 1)
         rows["market_order"] = rows.market.map({m: i for i, m in enumerate(MARKETS)})
         rows = rows.sort_values(["kickoff", "market_order", "handle_pct"], ascending=[False, True, False])
         tracked, untracked = rows[rows.market.notna()], rows[rows.market.isna()]
 
         st.subheader("Every prime-time game")
-        if tracked.empty:
-            st.info("No splits captured yet for these games.")
-        st.markdown(splits_legend(), unsafe_allow_html=True)
-        meta = team_meta()
-        card_games = list(tracked.groupby("game_id", sort=False))
-        for i in range(0, len(card_games), 2):
-            for col, (gid, sides) in zip(st.columns(2), card_games[i:i + 2]):
-                col.markdown(splits_card(sides, meta), unsafe_allow_html=True)
+        if season_pt == "All seasons":
+            st.caption("Pick a season above to see each game.")
+        else:
+            if tracked.empty:
+                st.info("No splits for these games yet.")
+            st.markdown(splits_legend(), unsafe_allow_html=True)
+            meta = team_meta()
+            card_games = list(tracked.groupby("game_id", sort=False))
+            for i in range(0, len(card_games), 2):
+                for col, (gid, sides) in zip(st.columns(2), card_games[i:i + 2]):
+                    col.markdown(splits_card(sides, meta, source), unsafe_allow_html=True)
 
         if len(tracked):
             with st.expander("All splits as a table (sortable, downloadable)"):
                 show = tracked.rename(columns={"week": "Week", "slot": "Slot", "market": "Market", "odds": "Odds",
                                                "handle_pct": "Money %", "bets_pct": "Bets %",
-                                               "hours_before": "Hrs before kickoff"})
+                                               "hours_before": "Hrs before kickoff", "season": "Season"})
                 show["Market"] = show.Market.str.title()
-                st.dataframe(show[["Week", "Slot", "Game", "Score", "Market", "Bet", "Odds", "Money %", "Bets %",
-                                   "Money − Bets", "Result", "Hrs before kickoff"]],
-                             hide_index=True, use_container_width=True,
+                show_cols = ["Season", "Week", "Slot", "Game", "Score", "Market", "Bet", "Odds", "Money %", "Bets %",
+                             "Money − Bets", "Public side", "Result"] + ([] if an else ["Hrs before kickoff"])
+                st.dataframe(show[show_cols], hide_index=True, use_container_width=True,
                              column_config={
+                                 "Season": st.column_config.NumberColumn(format="%d"),
                                  "Odds": st.column_config.NumberColumn(format="%+d"),
                                  "Money %": st.column_config.ProgressColumn(min_value=0, max_value=100, format="%.0f%%"),
                                  "Bets %": st.column_config.ProgressColumn(min_value=0, max_value=100, format="%.0f%%"),
                                  "Money − Bets": st.column_config.NumberColumn(
                                      format="%+.0f", help="Money share minus bet share, in points. Positive = "
                                                           "bigger average wager on this side."),
+                                 "Public side": st.column_config.CheckboxColumn(
+                                     help="The side with most of the bets in this market."),
                                  "Hrs before kickoff": st.column_config.NumberColumn(
                                      format="%.1f", help="How long before kickoff the splits snapshot was taken."),
                              })
         if len(untracked):
-            st.markdown(f"**Played before splits tracking began** ({len(untracked)} games)")
-            st.caption("DraftKings only shows splits for upcoming games, so these can't be filled in after the fact.")
-            st.dataframe(untracked[["week", "slot", "Game", "Score"]].rename(
-                columns={"week": "Week", "slot": "Slot", "Score": "Final"}), hide_index=True, use_container_width=True)
+            st.markdown(f"**No {source} splits** ({len(untracked)} games)")
+            st.caption("DraftKings only shows splits for upcoming games, so games before Oct 5, 2026 aren't covered. "
+                       "Switch to Action Network for them." if not an else
+                       "Action Network splits for a game are added on the next scheduled run after it ends.")
+            st.dataframe(untracked[["season", "week", "slot", "Game", "Score"]].rename(
+                columns={"season": "Season", "week": "Week", "slot": "Slot", "Score": "Final"}),
+                hide_index=True, use_container_width=True,
+                column_config={"Season": st.column_config.NumberColumn(format="%d")})
 
         # ---- does the bigger-wager side win more?
         if not done.empty:

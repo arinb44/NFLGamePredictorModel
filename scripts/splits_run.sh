@@ -11,7 +11,7 @@ echo "===== splits $(date '+%Y-%m-%d %H:%M:%S %Z') ====="
 
 "$PY" -m src.splits || { echo "splits capture failed"; exit 1; }
 
-git add reports/prime_time_splits.csv reports/prime_time_games.csv
+git add reports/prime_time_splits.csv reports/prime_time_games.csv reports/prime_time_public.csv
 if git diff --cached --quiet; then
   echo "No changes to commit."
 else
