@@ -42,7 +42,7 @@ def _graded(away_score, home_score):
     sched = pd.DataFrame({"game_id": ["G"], "gameday": ["2026-10-05"], "gametime": ["20:15"],
                           "away_team": ["ATL"], "home_team": ["NO"],
                           "away_score": [away_score], "home_score": [home_score]})
-    pt = pd.DataFrame({"game_id": ["G"], "week": [4], "slot": ["MNF"]})
+    pt = pd.DataFrame({"game_id": ["G"], "season": [2026], "week": [4], "slot": ["MNF"]})
     rows = [("moneyline", "NO", None, 55, 59), ("moneyline", "ATL", None, 45, 41),
             ("spread", "NO", -1.5, 40, 62), ("spread", "ATL", 1.5, 60, 38),
             ("total", "over", 47.5, 90, 71), ("total", "under", 47.5, 10, 29)]

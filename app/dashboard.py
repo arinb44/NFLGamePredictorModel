@@ -1204,7 +1204,7 @@ elif page == "Matchups":
 elif page == "Prime Time":
     from src.data_loader import load_schedules
     from src.splits import (GAMES_PATH, MARKETS, disagreements, graded, kickoff_times, load_public, load_splits,
-                            majority_record, record, units)
+                            majority_record, record, units, win_rate)
 
     st.caption("Thursday, Sunday and Monday night games: the share of the money (**% handle**) and of the wagers "
                "(**% bets**) on each side, and who won. **The public** is the side with most of the bets; when it "
@@ -1245,10 +1245,11 @@ elif page == "Prime Time":
             for col, m in zip(cols, ("spread", "moneyline", "total")):
                 pm = public[public.market == m]
                 u = units(pm)
-                col.metric(f"{m.title()}: public side", record(pm) if len(pm) else "–",
-                           f"{u:+.1f} units" if len(pm) else None,
-                           help="W-L(-push) of the side with most of the bets. Units = profit from betting 1 unit "
-                                "on every public side at the listed odds; negative means the books came out ahead.")
+                col.metric(f"{m.title()}: public side", record(pm, rate=False) if len(pm) else "–",
+                           f"{u:+.1f} units · {win_rate(pm):.0%} won" if len(pm) else None,
+                           help="W-L(-push) of the side with most of the bets, and how often it won. Units = profit "
+                                "from betting 1 unit on every public side at the listed odds; negative means the "
+                                "books came out ahead.")
             n_graded = done.game_id.nunique()
             st.caption(f"{n_graded} graded game{'s' if n_graded != 1 else ''}. Spreads and totals are graded against "
                        "the line the source listed, so a side can cover at one number and not another. 50/50 splits "
@@ -1267,8 +1268,7 @@ elif page == "Prime Time":
                          column_config={"Public units": st.column_config.NumberColumn(format="%+.1f"),
                                         "Money side units": st.column_config.NumberColumn(format="%+.1f")})
 
-            by_season = g_all[g_all.game_id.isin(in_slot.game_id) & (g_all.result != "pending")].merge(
-                pt_games[["game_id", "season"]], on="game_id")
+            by_season = g_all[g_all.game_id.isin(in_slot.game_id) & (g_all.result != "pending")]
             if by_season.season.nunique() > 1:
                 with st.expander("Public side by season"):
                     pub = majority_record(by_season, "bets_pct")
@@ -1363,22 +1363,41 @@ elif page == "Prime Time":
             pts["Game"] = pts.away_team + " @ " + pts.home_team
             pts["Market"] = pts.market.str.title()
             pts["Result"] = pts.result.str.title()
+            pts["Slot"] = pts.slot
+            pts["Season"] = pts.season.astype(int).astype(str)
             pts["Bet"] = np.where(pts.market == "total", pts.side.str.title(), pts.side)
-            dots = alt.Chart(pts).mark_point(size=90, filled=True, opacity=0.9).encode(
-                x=alt.X("bets_pct:Q", title="% of bets", scale=alt.Scale(domain=[0, 100])),
-                y=alt.Y("handle_pct:Q", title="% of money", scale=alt.Scale(domain=[0, 100])),
+
+            g1, g2 = st.columns([1, 3])
+            gray_by = g1.selectbox("Gray out by", ["Result", "Market", "Slot", "Season"], key="pt_gray_by")
+            groups = sorted(pts[gray_by].unique(), key=lambda v: ({"Won": 0, "Lost": 1, "Push": 2, "Moneyline": 0,
+                                                                  "Spread": 1, "Total": 2, "TNF": 0, "SNF": 1,
+                                                                  "MNF": 2}.get(v, 0), v))
+            grayed = g2.multiselect("Groups to gray out", groups, key=f"pt_gray_{gray_by}",
+                                    placeholder="Pick groups to fade into the background")
+            pts["faded"] = pts[gray_by].isin(grayed)
+
+            x = alt.X("bets_pct:Q", title="% of bets", scale=alt.Scale(domain=[0, 100]))
+            y = alt.Y("handle_pct:Q", title="% of money", scale=alt.Scale(domain=[0, 100]))
+            shape = alt.Shape("Market:N", scale=alt.Scale(domain=["Moneyline", "Spread", "Total"]),
+                              legend=alt.Legend(title=None))
+            tip = ["Season", "week", "Slot", "Game", "Market", "Bet", "line", "odds",
+                   alt.Tooltip("handle_pct:Q", title="% money"), alt.Tooltip("bets_pct:Q", title="% bets"), "Result"]
+            faded = alt.Chart(pts[pts.faded]).mark_point(size=70, filled=True, opacity=0.35, color="#4a4a50").encode(
+                x=x, y=y, shape=shape, tooltip=tip)
+            lit = alt.Chart(pts[~pts.faded]).mark_point(size=90, filled=True, opacity=0.9).encode(
+                x=x, y=y, shape=shape, tooltip=tip,
                 color=alt.Color("Result:N", scale=alt.Scale(domain=["Won", "Lost", "Push"], range=[BLUE, RED, GRAY]),
-                                legend=alt.Legend(title=None)),
-                shape=alt.Shape("Market:N", legend=alt.Legend(title=None)),
-                tooltip=["week", "slot", "Game", "Market", "Bet", "line", "odds",
-                         alt.Tooltip("handle_pct:Q", title="% money"), alt.Tooltip("bets_pct:Q", title="% bets"),
-                         "Result"])
+                                legend=alt.Legend(title=None)))
             diag = alt.Chart(pd.DataFrame({"x": [0, 100], "y": [0, 100]})).mark_line(
                 color=GRAY, strokeDash=[4, 4], strokeWidth=1).encode(x="x:Q", y="y:Q")
-            st.altair_chart(style(diag + dots, 360), use_container_width=True)
+            st.altair_chart(style(diag + faded + lit, 360), use_container_width=True)
+            shown = pts[~pts.faded]
+            above = shown[shown.handle_pct > shown.bets_pct]
             st.caption("One dot per game and market: the side holding most of the money. Above the dashed line, "
                        "that side's money share beats its bet share (bigger tickets); below it, the side is "
-                       "popular with many small bets but holds less of the money.")
+                       "popular with many small bets but holds less of the money. "
+                       + (f"Highlighted: {len(shown)} dots, money side {record(shown)}; above the line "
+                          f"{record(above)}." if len(shown) else "Every dot is grayed out."))
 
 # ================================================================ Model
 elif page == "Model":

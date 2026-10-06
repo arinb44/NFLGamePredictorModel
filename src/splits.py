@@ -324,7 +324,7 @@ def graded(splits: pd.DataFrame, pt_games: pd.DataFrame, sched: pd.DataFrame,
     s = s[s.captured_at == last]
     sc = sched.set_index("game_id")
     s = s.join(sc[["away_team", "home_team", "away_score", "home_score", "gameday"]], on="game_id")
-    s = s.merge(pt_games[["game_id", "week", "slot"]], on="game_id", how="left")
+    s = s.merge(pt_games[["game_id", "season", "week", "slot"]], on="game_id", how="left")
 
     home_side = s.side == s.home_team
     margin = np.where(home_side, s.home_score - s.away_score, s.away_score - s.home_score)
@@ -360,10 +360,15 @@ def units(df: pd.DataFrame) -> float:
     return float(np.select([df.result == "won", df.result == "lost"], [win, -1.0], 0.0).sum())
 
 
-def record(df: pd.DataFrame) -> str:
+def win_rate(df: pd.DataFrame) -> float:
+    w, l = (df.result == "won").sum(), (df.result == "lost").sum()
+    return w / (w + l) if w + l else np.nan
+
+
+def record(df: pd.DataFrame, rate: bool = True) -> str:
     w, l, p = (df.result == "won").sum(), (df.result == "lost").sum(), (df.result == "push").sum()
-    rate = f" ({w / (w + l):.0%})" if w + l else ""
-    return f"{w}-{l}" + (f"-{p}" if p else "") + rate
+    pct = f" ({win_rate(df):.0%})" if rate and w + l else ""
+    return f"{w}-{l}" + (f"-{p}" if p else "") + pct
 
 
 def report():
