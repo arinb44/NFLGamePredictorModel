@@ -18,6 +18,22 @@ import streamlit as st
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
+
+def _reload_changed_src():
+    """Streamlit reruns this script when it changes but keeps already-imported modules, so after
+    a push (or a local edit) src/ code would stay stale until a reboot. Reload src modules not yet
+    stamped with their file's modification time, or whose file changed since."""
+    import importlib
+    for name, mod in list(sys.modules.items()):
+        path = getattr(mod, "__file__", None)
+        if name.startswith("src.") and path and Path(path).exists():
+            mtime = Path(path).stat().st_mtime
+            if getattr(mod, "_loaded_mtime", None) != mtime:
+                importlib.reload(mod)._loaded_mtime = mtime
+
+
+_reload_changed_src()
+
 from src.config import PROCESSED_DIR, RAW_DIR  # noqa: E402
 
 # Hosted mode (e.g. Streamlit Community Cloud): the data isn't in git, so download
