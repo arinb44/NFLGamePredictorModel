@@ -27,8 +27,16 @@ HOSTED_MARKER = PROCESSED_DIR / ".downloaded"
 
 @st.cache_data(ttl=3600, show_spinner="Loading the latest predictions...")
 def sync_hosted_data():
+    import requests
+    from src.data_loader import load_schedules
     from src.publish import download
     download()
+    # Final scores straight from nflverse, so finished games are graded within the hour
+    # instead of at the next publish. The bundled schedule stays if nflverse is unreachable.
+    try:
+        load_schedules(refresh=True)
+    except requests.RequestException:
+        pass
     HOSTED_MARKER.write_text(pd.Timestamp.now(tz="UTC").isoformat())
     return HOSTED_MARKER.read_text()
 
