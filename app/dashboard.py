@@ -1369,24 +1369,24 @@ elif page == "Prime Time":
 
             g1, g2 = st.columns([1, 3])
             gray_by = g1.selectbox("Gray out by", ["Result", "Market", "Slot", "Season"], key="pt_gray_by")
-            groups = sorted(pts[gray_by].unique(), key=lambda v: ({"Won": 0, "Lost": 1, "Push": 2, "Moneyline": 0,
-                                                                  "Spread": 1, "Total": 2, "TNF": 0, "SNF": 1,
-                                                                  "MNF": 2}.get(v, 0), v))
+            # Fixed options per grouping: options that depended on the data would reset the selection when a
+            # filter changes, changing the chart's spec and data at once (see below).
+            groups = {"Result": ["Won", "Lost", "Push"], "Market": ["Moneyline", "Spread", "Total"],
+                      "Slot": ["TNF", "SNF", "MNF"], "Season": [str(x) for x in sorted(pt_games.season.unique())]}[gray_by]
             grayed = g2.multiselect("Groups to gray out", groups, key=f"pt_gray_{gray_by}",
                                     placeholder="Pick groups to fade into the background")
             pts["faded"] = pts[gray_by].isin(grayed)
 
-            # One dataset for every dot (fading is an encoding, not a separate layer). Streamlit updates an
-            # unchanged chart spec's data in place, which fails on the hosted app ("Unrecognized data set"), so
-            # the spec carries a hash of the data: new data means a new spec and a clean redraw.
-            pts["shade"] = np.where(pts.faded, "Grayed out", pts.Result)
-            pts["lit"] = (~pts.faded).astype(int)
-            shades = ["Won", "Lost", "Push"] + (["Grayed out"] if pts.faded.any() else [])
-            plot_cols = ["bets_pct", "handle_pct", "shade", "lit", "Market", "Season", "week", "Slot", "Game", "Bet",
-                         "line", "odds", "Result"]
-            plot = pts.sort_values("lit")[plot_cols].reset_index(drop=True)
-            data_hash = str(int(pd.util.hash_pandas_object(plot, index=False).sum()))
-            dots = alt.Chart(plot).mark_point(filled=True).encode(
+            # Streamlit's chart component breaks ("Unrecognized data set", blank chart) when a rerun changes a
+            # chart's spec and its data together, and an Altair DataFrame puts a hash of its data in the spec.
+            # So the data goes in separately (st.vega_lite_chart) and stays the same while graying out, and
+            # which dots are grayed is computed inside the spec from the selection.
+            plot = pts[["bets_pct", "handle_pct", "Market", "Season", "week", "Slot", "Game", "Bet", "line", "odds",
+                        "Result"]].reset_index(drop=True)
+            gray_test = f"indexof({json.dumps([str(v) for v in grayed])}, '' + datum['{gray_by}']) < 0 ? 1 : 0"
+            shades = ["Won", "Lost", "Push"] + (["Grayed out"] if grayed else [])
+            dots = alt.Chart().transform_calculate(lit=gray_test).transform_calculate(
+                shade="datum.lit ? datum.Result : 'Grayed out'").mark_point(filled=True).encode(
                 x=alt.X("bets_pct:Q", title="% of bets", scale=alt.Scale(domain=[0, 100])),
                 y=alt.Y("handle_pct:Q", title="% of money", scale=alt.Scale(domain=[0, 100])),
                 color=alt.Color("shade:N", scale=alt.Scale(domain=shades, range=[BLUE, RED, GRAY, "#4a4a50"][:len(shades)]),
@@ -1394,16 +1394,18 @@ elif page == "Prime Time":
                 shape=alt.Shape("Market:N", scale=alt.Scale(domain=["Moneyline", "Spread", "Total"]),
                                 legend=alt.Legend(title=None, symbolFillColor=TEXT_2, symbolStrokeColor=TEXT_2,
                                                   symbolOpacity=1)),
-                opacity=alt.condition(alt.datum.lit == 1, alt.value(0.9), alt.value(0.35)),
-                size=alt.condition(alt.datum.lit == 1, alt.value(90), alt.value(60)),
+                opacity=alt.condition("datum.lit == 1", alt.value(0.9), alt.value(0.35)),
+                size=alt.condition("datum.lit == 1", alt.value(90), alt.value(60)),
                 order=alt.Order("lit:Q"),
-                tooltip=["Season", "week", "Slot", "Game", "Market", "Bet", "line", "odds",
-                         alt.Tooltip("handle_pct:Q", title="% money"), alt.Tooltip("bets_pct:Q", title="% bets"),
-                         "Result"])
-            diag = alt.Chart(pd.DataFrame({"x": [0, 100], "y": [0, 100]})).mark_line(
-                color=GRAY, strokeDash=[4, 4], strokeWidth=1).encode(x="x:Q", y="y:Q")
-            st.altair_chart(style((diag + dots).properties(usermeta={"data": data_hash}), 360),
-                            use_container_width=True)
+                tooltip=["Season:N", alt.Tooltip("week:Q", title="Week"), "Slot:N", "Game:N", "Market:N", "Bet:N",
+                         "line:Q", "odds:Q", alt.Tooltip("handle_pct:Q", title="% money"),
+                         alt.Tooltip("bets_pct:Q", title="% bets"), "Result:N"])
+            diag = alt.Chart().mark_line(color=GRAY, strokeDash=[4, 4], strokeWidth=1).encode(x="x:Q", y="y:Q")
+            spec = style(alt.layer(diag, dots), 360).to_dict()
+            spec.pop("datasets", None)  # Altair's placeholder for charts built without data
+            spec["layer"][0]["data"] = {"values": [{"x": 0, "y": 0}, {"x": 100, "y": 100}]}
+            spec["layer"][1].pop("data", None)  # the dots use the data passed to st.vega_lite_chart
+            st.vega_lite_chart(plot, spec, use_container_width=True)
             shown = pts[~pts.faded]
             above = shown[shown.handle_pct > shown.bets_pct]
             st.caption("One dot per game and market: the side holding most of the money. Above the dashed line, "
