@@ -1198,7 +1198,8 @@ elif page == "Prime Time":
                 "Money and bets disagree: money side": record(disagreements(done[done.market == m])),
             } for m in MARKETS])
             st.dataframe(summary, hide_index=True, use_container_width=True)
-            st.caption(f"{done.game_id.nunique()} graded games. Records are W-L(-push) with win rate. "
+            n_graded = done.game_id.nunique()
+            st.caption(f"{n_graded} graded game{'s' if n_graded != 1 else ''}. Records are W-L(-push) with win rate. "
                        "Spreads and totals are graded against the line in the snapshot, so a side can cover at "
                        "one number and not another. 50/50 splits are left out.")
 
