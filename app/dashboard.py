@@ -18,7 +18,7 @@ import streamlit as st
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from src.config import PROCESSED_DIR  # noqa: E402
+from src.config import PROCESSED_DIR, RAW_DIR  # noqa: E402
 
 # Hosted mode (e.g. Streamlit Community Cloud): the data isn't in git, so download
 # the bundle published by `python -m src.publish`, and refresh it hourly.
@@ -263,6 +263,13 @@ def kickoffs():
     return dict(zip(s.game_id, pd.to_datetime(s.gameday + " " + s.gametime.fillna("13:00"))))
 
 
+@st.cache_data
+def final_scores(version):
+    """game_id -> home_score, away_score for finished games, from the schedule."""
+    from src.data_loader import load_schedules
+    return load_schedules()[["game_id", "home_score", "away_score"]].dropna().set_index("game_id")
+
+
 @st.cache_data(ttl=3600)
 def stadiums():
     """game_id -> stadium name from the schedule."""
@@ -402,13 +409,20 @@ if page == "This Week":
     bundle = load_model(model_path.stat().st_mtime)
 
     cur = int(games.season.max())
-    wk_all = sorted(games[games.season == cur].week.unique())
-    upcoming_weeks = sorted(games[(games.season == cur) & games.home_score.isna()].week.unique())
+    # Final scores from the schedule (refreshed hourly on the hosted app), so games show their
+    # result before the next pipeline run rebuilds the game table.
+    _sp = RAW_DIR / "schedules.parquet"
+    finals = final_scores(_sp.stat().st_mtime if _sp.exists() else 0)
+    cur_games = games[games.season == cur].copy()
+    for col in ("home_score", "away_score"):
+        cur_games[col] = cur_games[col].fillna(cur_games.game_id.map(finals[col]))
+    wk_all = sorted(cur_games.week.unique())
+    upcoming_weeks = sorted(cur_games[cur_games.home_score.isna()].week.unique())
     f1, f2 = st.columns([1, 3])
     week = f1.selectbox("Week", wk_all, index=wk_all.index(upcoming_weeks[0]) if upcoming_weeks else len(wk_all) - 1,
                         format_func=lambda w: f"Week {w}" if w <= 18 else {19: "Wild Card", 20: "Divisional",
                                                                            21: "Conference", 22: "Super Bowl"}.get(w, f"Week {w}"))
-    wg = games[(games.season == cur) & (games.week == week)].copy()
+    wg = cur_games[cur_games.week == week].copy()
     wg["kickoff"] = wg.game_id.map(ko)
     wg = wg.sort_values(["kickoff", "game_id"]).reset_index(drop=True)
     wg["p_vegas"] = moneyline_prob(wg.home_moneyline, wg.away_moneyline)
