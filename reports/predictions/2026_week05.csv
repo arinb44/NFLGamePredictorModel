@@ -1,0 +1,16 @@
+game_id,away,home,p_home,p_vegas,model_spread,vegas_spread,factor_1,factor_2,factor_3
+2026_05_TB_DAL,TB,DAL,0.7288,0.7914,DAL -6.5,DAL -8.5,DAL +10.7% Quarterback,TB +8.2% Defense,DAL +6.9% Home field
+2026_05_BAL_ATL,BAL,ATL,0.487,0.6092,BAL -0.5,ATL -3.5,ATL +7.0% Home field,BAL +5.6% Quarterback,ATL +3.2% Defense
+2026_05_CHI_GB,CHI,GB,0.5288,0.4573,Pick'em,CHI -1.5,GB +11.6% Quarterback,GB +6.4% Home field,CHI +3.8% Scoring & record
+2026_05_CIN_MIA,CIN,MIA,0.348,0.2779,CIN -5,CIN -6.5,MIA +7.0% Home field,CIN +6.6% Quarterback,CIN +4.2% Scoring & record
+2026_05_CLE_NYJ,CLE,NYJ,0.5459,0.5325,NYJ -1,NYJ -1.5,NYJ +7.0% Home field,CLE +2.7% Scoring & record,NYJ +2.6% Fatigue
+2026_05_DEN_LAC,DEN,LAC,0.4488,0.3775,DEN -0.5,DEN -3.5,LAC +7.0% Home field,DEN +3.3% Scoring & record,DEN +3.1% Offense
+2026_05_DET_ARI,DET,ARI,0.3574,0.3092,DET -4,DET -5.5,ARI +7.0% Home field,DET +5.1% Scoring & record,DET +5.1% Quarterback
+2026_05_HOU_TEN,HOU,TEN,0.3394,0.2232,HOU -4.5,HOU -7.5,TEN +7.0% Home field,HOU +6.4% Quarterback,HOU +5.0% Scoring & record
+2026_05_IND_PIT,IND,PIT,0.5914,0.5635,PIT -3,PIT -2.5,PIT +7.0% Home field,PIT +3.1% Quarterback,IND +2.0% Offense
+2026_05_LV_NE,LV,NE,0.6895,0.6369,NE -7,NE -3.5,NE +7.0% Home field,NE +4.2% Offense,NE +2.8% Scoring & record
+2026_05_MIN_NO,MIN,NO,0.394,0.4486,MIN -4,MIN -2.5,MIN +7.6% Defense,NO +7.0% Home field,MIN +5.8% Scoring & record
+2026_05_NYG_WAS,NYG,WAS,0.5428,0.6164,Pick'em,WAS -3.5,WAS +7.0% Home field,WAS +4.0% QB in bad weather,NYG +2.9% Scoring & record
+2026_05_PHI_JAX,PHI,JAX,0.7137,0.7441,JAX -7,JAX -7.5,JAX +7.0% Home field,JAX +4.4% Scoring & record,JAX +4.1% Offense
+2026_05_SF_SEA,SF,SEA,0.4923,0.5934,SEA -0.5,SEA -3,SF +9.0% Quarterback,SEA +6.9% Home field,SEA +5.3% Defense
+2026_05_BUF_LA,BUF,LA,0.562,0.5996,LA -1.5,LA -3,LA +7.2% Defense,LA +6.7% Home field,BUF +3.0% Quarterback
