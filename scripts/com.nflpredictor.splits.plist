@@ -1,7 +1,9 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <!-- Prime-time betting splits, captured shortly before TNF, SNF and MNF kickoffs:
-     Thu, Sun and Mon at 7:00 PM and 8:00 PM (local time, US Eastern).
+     Thu, Sun and Mon at 7:00 PM and 8:00 PM (local time, US Eastern). Fri and Tue at 9:00 AM
+     add the night before's game to the Action Network history (SNF is picked up Mon at noon
+     by the weekly run).
      Install: cp scripts/com.nflpredictor.splits.plist ~/Library/LaunchAgents/ &&
               launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.nflpredictor.splits.plist
      If the Mac is asleep at a scheduled time, the run happens when it wakes (games that
@@ -22,6 +24,8 @@
     <dict><key>Weekday</key><integer>0</integer><key>Hour</key><integer>20</integer><key>Minute</key><integer>0</integer></dict>
     <dict><key>Weekday</key><integer>1</integer><key>Hour</key><integer>19</integer><key>Minute</key><integer>0</integer></dict>
     <dict><key>Weekday</key><integer>1</integer><key>Hour</key><integer>20</integer><key>Minute</key><integer>0</integer></dict>
+    <dict><key>Weekday</key><integer>5</integer><key>Hour</key><integer>9</integer><key>Minute</key><integer>0</integer></dict>
+    <dict><key>Weekday</key><integer>2</integer><key>Hour</key><integer>9</integer><key>Minute</key><integer>0</integer></dict>
   </array>
   <key>StandardOutPath</key><string>/Users/arins/Projects/NFLGamePredictorModel/logs/splits_run.log</string>
   <key>StandardErrorPath</key><string>/Users/arins/Projects/NFLGamePredictorModel/logs/splits_run.log</string>

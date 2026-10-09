@@ -100,7 +100,7 @@ launchctl kickstart gui/$(id -u)/com.nflpredictor.weekly                        
 launchctl bootout gui/$(id -u)/com.nflpredictor.weekly                                   # uninstall
 ```
 
-A second LaunchAgent, `scripts/com.nflpredictor.splits.plist`, runs `scripts/splits_run.sh` on Thursday, Sunday and Monday at 7:00 PM and 8:00 PM. Each run snapshots the DraftKings betting splits for prime-time games that haven't kicked off, then commits and pushes `reports/prime_time_splits.csv`. Output goes to `logs/splits_run.log`. Install it the same way, with `splits` in place of `weekly`.
+A second LaunchAgent, `scripts/com.nflpredictor.splits.plist`, runs `scripts/splits_run.sh` on Thursday, Sunday and Monday at 7:00 PM and 8:00 PM. Each run snapshots the DraftKings betting splits for prime-time games that haven't kicked off, then commits and pushes `reports/prime_time_splits.csv`. It also runs Friday and Tuesday at 9:00 AM to add the previous night's game to the Action Network history (Sunday night's game is added by Monday's noon run). If the network isn't up yet (right after the Mac wakes), it retries once a minute later. Output goes to `logs/splits_run.log`. Install it the same way, with `splits` in place of `weekly`.
 
 The project must live outside `~/Documents`, `~/Desktop` and `~/Downloads`, because macOS blocks background jobs from reading those folders. The paths in the plist point to `~/Projects/NFLGamePredictorModel`. Next season, update `CURRENT_SEASON` in `src/config.py`.
 

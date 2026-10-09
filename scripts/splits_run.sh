@@ -9,7 +9,8 @@ export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin"
 
 echo "===== splits $(date '+%Y-%m-%d %H:%M:%S %Z') ====="
 
-"$PY" -m src.splits || { echo "splits capture failed"; exit 1; }
+# Retry once: right after the Mac wakes, the network may not be up yet.
+"$PY" -m src.splits || { echo "Retrying in 60s"; sleep 60; "$PY" -m src.splits; } || { echo "splits capture failed"; exit 1; }
 
 git add reports/prime_time_splits.csv reports/prime_time_games.csv reports/prime_time_public.csv
 if git diff --cached --quiet; then

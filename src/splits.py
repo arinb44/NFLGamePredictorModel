@@ -277,7 +277,7 @@ def update_public(seasons, pause: float = 3.0) -> pd.DataFrame:
     """Add Action Network splits for finished prime-time games not saved yet.
     Only weeks that have such games are requested."""
     from src.data_loader import load_schedules
-    sched = load_schedules()
+    sched = load_schedules(refresh=True)  # needs the latest final scores
     lookup = _team_lookup()
     stored = load_public()
     new = []

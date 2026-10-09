@@ -145,7 +145,7 @@ DATA_FILES = [PROCESSED_DIR / "games_features.parquet", PROCESSED_DIR / "oos_pre
               PROCESSED_DIR / "team_games.parquet"]
 
 
-@st.cache_data
+@st.cache_data(max_entries=1)
 def load(versions):
     """Cached; `versions` (file modification times) makes the cache refresh after a pipeline rerun."""
     games = pd.read_parquet(PROCESSED_DIR / "games_features.parquet")
@@ -159,7 +159,7 @@ def load(versions):
     return games, oos, missing, results, team_games
 
 
-@st.cache_data
+@st.cache_data(max_entries=1)
 def load_coverage(version):
     paths = {k: PROCESSED_DIR / f"coverage_{k}.parquet" for k in ("defense", "types", "offense")}
     if not all(p.exists() for p in paths.values()):
@@ -214,7 +214,7 @@ def prime_time_records():
     return r[["qb", "record", "expected", "vs_expected"]]
 
 
-@st.cache_data
+@st.cache_data(max_entries=1)
 def load_blitz(version=None):
     """Per team-game blitzed / not-blitzed dropbacks and EPA (FTN charting, 2022+)."""
     path = PROCESSED_DIR / "blitz_team_games.parquet"
@@ -224,7 +224,7 @@ def load_blitz(version=None):
     return blitz_team_games()
 
 
-@st.cache_data
+@st.cache_data(max_entries=1)
 def team_long(games: pd.DataFrame) -> pd.DataFrame:
     """One row per team per game with that team's pregame features."""
     feats = [c[len("home_"):] for c in games.columns
@@ -245,14 +245,14 @@ def team_long(games: pd.DataFrame) -> pd.DataFrame:
     return t
 
 
-@st.cache_resource
+@st.cache_resource(max_entries=1)
 def load_model(version):
     import joblib
     from src.config import MODELS_DIR
     return joblib.load(MODELS_DIR / "logistic.joblib")
 
 
-@st.cache_resource
+@st.cache_resource(max_entries=1)
 def load_spread(version):
     import joblib
     from src.config import MODELS_DIR
@@ -279,7 +279,7 @@ def kickoffs():
     return dict(zip(s.game_id, pd.to_datetime(s.gameday + " " + s.gametime.fillna("13:00"))))
 
 
-@st.cache_data
+@st.cache_data(max_entries=1)
 def final_scores(version):
     """game_id -> home_score, away_score for finished games, from the schedule."""
     from src.data_loader import load_schedules
@@ -1520,3 +1520,23 @@ elif page == "Model":
 
 st.sidebar.markdown("---")
 st.sidebar.caption("Every chart has a hover tooltip. Tables can be sorted and downloaded.")
+
+
+def _release_memory():
+    """On Linux (the hosted app), hand freed memory back to the OS after each run. Streamlit runs
+    every session in its own thread; glibc gives threads separate malloc arenas and keeps freed
+    memory, so the process creeps past Community Cloud's guaranteed 690 MB and gets stopped."""
+    if not sys.platform.startswith("linux"):
+        return
+    import ctypes
+    import gc
+    try:
+        libc = ctypes.CDLL("libc.so.6")
+        libc.mallopt(-8, 2)  # M_ARENA_MAX: at most 2 arenas
+        gc.collect()
+        libc.malloc_trim(0)
+    except (OSError, AttributeError):
+        pass
+
+
+_release_memory()

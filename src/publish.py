@@ -53,12 +53,16 @@ def upload():
 
 
 def download(dest_root=ROOT, timeout: int = 60):
-    """Download the bundle into the standard local locations (used by the hosted dashboard)."""
+    """Download the bundle into the standard local locations (used by the hosted dashboard).
+    Unchanged files are left alone, so their modification times (which the dashboard's caches
+    key on) only move when a run publishes new data."""
     import requests
     for name, path in BUNDLE.items():
         path.parent.mkdir(parents=True, exist_ok=True)
         r = requests.get(f"{RELEASE_URL}/{name}", timeout=timeout)
         r.raise_for_status()
+        if path.exists() and path.read_bytes() == r.content:
+            continue
         tmp = path.with_suffix(path.suffix + ".part")
         tmp.write_bytes(r.content)
         tmp.replace(path)
