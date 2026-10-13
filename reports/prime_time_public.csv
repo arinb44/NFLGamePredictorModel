@@ -951,3 +951,9 @@ captured_at,game_id,market,side,line,odds,handle_pct,bets_pct,source
 2026-10-12T23:00:08Z,2026_05_BAL_ATL,spread,ATL,-3.0,-119,46,47,action_network
 2026-10-12T23:00:08Z,2026_05_BAL_ATL,total,under,44.0,-109,19,21,action_network
 2026-10-12T23:00:08Z,2026_05_BAL_ATL,total,over,44.0,-110,81,79,action_network
+2026-10-13T13:00:11Z,2026_05_BUF_LA,moneyline,BUF,,150,62,49,action_network
+2026-10-13T13:00:11Z,2026_05_BUF_LA,moneyline,LA,,-179,38,51,action_network
+2026-10-13T13:00:11Z,2026_05_BUF_LA,spread,LA,-3.5,-105,39,26,action_network
+2026-10-13T13:00:11Z,2026_05_BUF_LA,spread,BUF,3.5,-115,61,74,action_network
+2026-10-13T13:00:11Z,2026_05_BUF_LA,total,over,55.5,-106,90,85,action_network
+2026-10-13T13:00:11Z,2026_05_BUF_LA,total,under,55.5,-111,10,15,action_network
