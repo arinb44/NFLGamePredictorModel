@@ -957,3 +957,9 @@ captured_at,game_id,market,side,line,odds,handle_pct,bets_pct,source
 2026-10-13T13:00:11Z,2026_05_BUF_LA,spread,BUF,3.5,-115,61,74,action_network
 2026-10-13T13:00:11Z,2026_05_BUF_LA,total,over,55.5,-106,90,85,action_network
 2026-10-13T13:00:11Z,2026_05_BUF_LA,total,under,55.5,-111,10,15,action_network
+2026-10-16T13:19:36Z,2026_06_SEA_DEN,moneyline,SEA,,-150,79,78,action_network
+2026-10-16T13:19:36Z,2026_06_SEA_DEN,moneyline,DEN,,125,21,22,action_network
+2026-10-16T13:19:36Z,2026_06_SEA_DEN,spread,SEA,-2.5,-115,62,59,action_network
+2026-10-16T13:19:36Z,2026_06_SEA_DEN,spread,DEN,2.5,-102,38,41,action_network
+2026-10-16T13:19:36Z,2026_06_SEA_DEN,total,under,40.5,-108,24,18,action_network
+2026-10-16T13:19:36Z,2026_06_SEA_DEN,total,over,40.5,-112,76,82,action_network
