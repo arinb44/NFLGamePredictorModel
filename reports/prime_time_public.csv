@@ -969,3 +969,9 @@ captured_at,game_id,market,side,line,odds,handle_pct,bets_pct,source
 2026-10-19T16:10:05Z,2026_06_DAL_GB,spread,DAL,-1.5,-108,62,60,action_network
 2026-10-19T16:10:05Z,2026_06_DAL_GB,total,under,53.5,-109,11,24,action_network
 2026-10-19T16:10:05Z,2026_06_DAL_GB,total,over,53.5,-112,89,76,action_network
+2026-10-20T13:10:37Z,2026_06_WAS_SF,moneyline,WAS,,310,22,6,action_network
+2026-10-20T13:10:37Z,2026_06_WAS_SF,moneyline,SF,,-390,78,94,action_network
+2026-10-20T13:10:37Z,2026_06_WAS_SF,spread,SF,-7.5,-107,60,68,action_network
+2026-10-20T13:10:37Z,2026_06_WAS_SF,spread,WAS,7.5,-113,40,32,action_network
+2026-10-20T13:10:37Z,2026_06_WAS_SF,total,under,51.5,-108,20,25,action_network
+2026-10-20T13:10:37Z,2026_06_WAS_SF,total,over,51.5,-110,80,75,action_network
