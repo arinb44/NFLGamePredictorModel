@@ -1,0 +1,15 @@
+game_id,away,home,p_home,p_vegas,model_spread,vegas_spread,factor_1,factor_2,factor_3
+2026_07_NE_CHI,NE,CHI,0.4698,0.583,Pick'em,CHI -3,CHI +7.0% Home field,NE +4.2% Defense,NE +3.6% Quarterback
+2026_07_CIN_BAL,CIN,BAL,0.5127,0.4739,BAL -1,CIN -1.5,BAL +7.0% Home field,CIN +6.1% Quarterback,BAL +3.7% Defense
+2026_07_CLE_TEN,CLE,TEN,0.4688,0.4573,CLE -1.5,CLE -1.5,TEN +7.0% Home field,CLE +6.4% Quarterback,CLE +4.0% Scoring & record
+2026_07_DEN_ARI,DEN,ARI,0.4208,0.325,DEN -2,DEN -4.5,DEN +9.2% Defense,ARI +6.9% Home field,DEN +6.7% Scoring & record
+2026_07_GB_DET,GB,DET,0.679,0.5996,DET -6.5,DET -3,DET +7.0% Home field,GB +5.0% Defense,DET +3.7% Offense
+2026_07_IND_MIN,IND,MIN,0.7443,0.705,MIN -8.5,MIN -6.5,MIN +7.6% Defense,MIN +6.7% Home field,MIN +4.8% Scoring & record
+2026_07_KC_SEA,KC,SEA,0.4809,0.5721,KC -0.5,SEA -3,KC +9.0% Quarterback,SEA +6.9% Home field,KC +4.7% Offense
+2026_07_LA_LV,LA,LV,0.4259,0.3425,LA -3,LA -3.5,LA +8.3% Offense,LV +7.0% Home field,LA +4.5% Defense
+2026_07_MIA_NYJ,MIA,NYJ,0.6099,0.6636,NYJ -3.5,NYJ -4.5,NYJ +7.0% Home field,MIA +3.4% Rest,NYJ +2.7% Quarterback
+2026_07_NYG_HOU,NYG,HOU,0.7998,0.8082,HOU -10,HOU -10.5,HOU +10.9% Quarterback,HOU +6.5% Defense,HOU +5.9% Home field
+2026_07_PIT_NO,PIT,NO,0.4241,0.3908,PIT -3.5,PIT -3.5,NO +5.9% Fatigue,PIT +4.7% Quarterback,PIT +3.3% Scoring & record
+2026_07_SF_ATL,SF,ATL,0.2925,0.417,SF -6,SF -2.5,SF +7.2% Quarterback,ATL +7.0% Home field,SF +6.7% Offense
+2026_07_TB_CAR,TB,CAR,0.7104,0.5996,CAR -5.5,CAR -3,CAR +7.0% Home field,CAR +5.2% Fatigue,CAR +3.8% Quarterback
+2026_07_DAL_PHI,DAL,PHI,0.4428,0.3364,DAL -1.5,DAL -4.5,DAL +8.9% Quarterback,PHI +7.8% Defense,DAL +7.1% Offense
