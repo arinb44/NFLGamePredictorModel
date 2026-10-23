@@ -975,3 +975,9 @@ captured_at,game_id,market,side,line,odds,handle_pct,bets_pct,source
 2026-10-20T13:10:37Z,2026_06_WAS_SF,spread,WAS,7.5,-113,40,32,action_network
 2026-10-20T13:10:37Z,2026_06_WAS_SF,total,under,51.5,-108,20,25,action_network
 2026-10-20T13:10:37Z,2026_06_WAS_SF,total,over,51.5,-110,80,75,action_network
+2026-10-23T13:22:07Z,2026_07_NE_CHI,moneyline,CHI,,-157,42,60,action_network
+2026-10-23T13:22:07Z,2026_07_NE_CHI,moneyline,NE,,131,58,40,action_network
+2026-10-23T13:22:07Z,2026_07_NE_CHI,spread,CHI,-3.0,-103,37,33,action_network
+2026-10-23T13:22:07Z,2026_07_NE_CHI,spread,NE,3.0,-113,63,67,action_network
+2026-10-23T13:22:07Z,2026_07_NE_CHI,total,under,50.5,-106,24,37,action_network
+2026-10-23T13:22:07Z,2026_07_NE_CHI,total,over,50.5,-119,76,63,action_network
