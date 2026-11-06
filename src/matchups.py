@@ -73,7 +73,10 @@ class _History:
 
 def _league_gap_by_season(games: pd.DataFrame, n_a, s_a, n_b, s_b) -> pd.Series:
     """League EPA gap (group a minus group b) using all *earlier* seasons."""
-    t = games.groupby("season")[[n_a, s_a, n_b, s_b]].sum().cumsum().shift(1)
+    t = games.groupby("season")[[n_a, s_a, n_b, s_b]].sum()
+    if len(t):  # one extra season, so a season with no games yet (before its opener) gets the earlier seasons' gap
+        t = t.reindex(range(int(t.index.min()), int(t.index.max()) + 2), fill_value=0)
+    t = t.cumsum().shift(1)
     return (t[s_a] / t[n_a] - t[s_b] / t[n_b]).fillna(0.0)
 
 

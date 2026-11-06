@@ -9,8 +9,10 @@ export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin"
 
 echo "===== splits $(date '+%Y-%m-%d %H:%M:%S %Z') ====="
 
-# Retry once: right after the Mac wakes, the network may not be up yet.
-"$PY" -m src.splits || { echo "Retrying in 60s"; sleep 60; "$PY" -m src.splits; } || { echo "splits capture failed"; exit 1; }
+# Right after the Mac wakes, the network may not be up yet: wait up to 10 minutes, then retry once.
+for i in {1..20}; do curl -sfI --max-time 10 https://github.com >/dev/null && break; sleep 30; done
+# A failed run can still have added Action Network games, so commit whatever changed either way.
+"$PY" -m src.splits || { echo "Retrying in 60s"; sleep 60; "$PY" -m src.splits; } || echo "splits capture failed"
 
 git add reports/prime_time_splits.csv reports/prime_time_games.csv reports/prime_time_public.csv
 if git diff --cached --quiet; then

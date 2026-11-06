@@ -11,7 +11,8 @@ import src.features as features
 from src.config import PROCESSED_DIR
 from src.features import DEF_AVAILABILITY_FEATURES, FEATURE_COLUMNS, MATCHUP_FEATURES, build_game_features
 
-CUTOFFS = ["2012-11-04", "2019-09-15", "2023-12-10", "2025-10-05"]
+# 2019-09-05 is a season opener: no game of that season has been played yet.
+CUTOFFS = ["2012-11-04", "2019-09-05", "2019-09-15", "2023-12-10", "2025-10-05"]
 
 SCORE_COLS = ["home_score", "away_score", "result", "total", "overtime"]
 

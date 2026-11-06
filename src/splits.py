@@ -141,35 +141,40 @@ def _odds(s: str):
     return int(s) if re.fullmatch(r"-?\d+", s) else np.nan
 
 
-def _pct(cell: str):
-    m = re.search(r"(\d+(?:\.\d+)?)%", _text(cell))
-    return float(m.group(1)) if m else np.nan
+DK_COLS = ["away_name", "home_name", "market", "side_name", "line", "odds", "handle_pct", "bets_pct"]
 
 
 def parse_dk(html: str) -> pd.DataFrame:
-    """One row per game, market and side from a DraftKings splits page."""
+    """One row per game, market and side from a DraftKings splits page.
+    Layout (since Nov 2026): each game has a market label ("Moneyline", "Spread", "Total") right
+    before each `tb-sm` list of sides; a side shows its name, its odds, then % handle and % bets."""
     rows = []
     for block in re.split(r'<div class="tb-se ', html)[1:]:
         title = re.search(r'<h5[^>]*class="tb-se-title-new[^"]*"[^>]*>(.*?)</h5>', block, re.S)
         if not title or "@" not in _text(title.group(1)):
             continue
         away, home = (x.strip() for x in _text(title.group(1)).split("@", 1))
-        for market in block.split('class="tb-se-head')[1:]:
-            name = _text(re.search(r'<div class="flex-1">(.*?)</div>', market, re.S).group(1)).lower()
+        parts = re.split(r'>\s*([A-Za-z]+)\s*</div>\s*<div class="tb-sm', block)  # [pre, name, sides, ...]
+        for name, market in zip(parts[1::2], parts[2::2]):
+            name = name.lower()
             if name not in MARKETS:
                 continue
             for odd in market.split('class="tb-sodd')[1:]:
-                side = _text(re.search(r'tb-slipline[^>]*>(.*?)</div>', odd, re.S).group(1))
+                side = re.search(r'tb-slipline[^>]*>(.*?)</div>', odd, re.S)
+                if not side:
+                    continue
+                side = _text(side.group(1))
                 price = re.search(r'class="tb-odd-s[^"]*"[^>]*>(.*?)</a>', odd, re.S)
-                cells = re.split(r'<div class="flex-1">', odd)[1:]  # odds, % handle, % bets
+                # % handle and % bets are the first two percentages after the odds
+                pcts = [float(p) for p in re.findall(r"(\d+(?:\.\d+)?)%", _text(odd.split("</a>", 1)[-1]))]
                 line = re.search(r"([+-]?\d+(?:\.\d+)?)$", side) if name != "moneyline" else None
                 rows.append({"away_name": away, "home_name": home, "market": name,
                              "side_name": side[: line.start()].strip() if line else side,
                              "line": float(line.group(1)) if line else np.nan,
                              "odds": _odds(_text(price.group(1))) if price else np.nan,
-                             "handle_pct": _pct(cells[1]) if len(cells) > 2 else np.nan,
-                             "bets_pct": _pct(cells[2]) if len(cells) > 2 else np.nan})
-    return pd.DataFrame(rows)
+                             "handle_pct": pcts[0] if len(pcts) >= 2 else np.nan,
+                             "bets_pct": pcts[1] if len(pcts) >= 2 else np.nan})
+    return pd.DataFrame(rows, columns=DK_COLS)
 
 
 def fetch_dk(max_pages: int = 10) -> pd.DataFrame:
@@ -398,10 +403,20 @@ if __name__ == "__main__":
         add = update_public(range(max(args.public, AN_FIRST_SEASON), CURRENT_SEASON + 1))
         print(f"Added Action Network splits for {add.game_id.nunique()} prime-time game(s)")
     else:
-        snap = capture()
-        print(f"Captured {snap.game_id.nunique()} prime-time game(s): {', '.join(sorted(snap.game_id.unique())) or '-'}")
+        # The two sources are independent: a DraftKings failure must not stop the Action Network update.
+        dk_failed = False
+        try:
+            snap = capture()
+            print(f"Captured {snap.game_id.nunique()} prime-time game(s): {', '.join(sorted(snap.game_id.unique())) or '-'}")
+        except Exception:
+            import traceback
+            traceback.print_exc()
+            print("DraftKings capture failed.")
+            dk_failed = True
         try:
             add = update_public([CURRENT_SEASON])
             print(f"Action Network: added {add.game_id.nunique()} finished prime-time game(s)")
         except requests.RequestException as e:
             print(f"Action Network unavailable ({e}); will retry next run.")
+        if dk_failed:
+            raise SystemExit(1)

@@ -81,7 +81,7 @@ streamlit run app/dashboard.py   # open the dashboard at http://localhost:8501
 
 A macOS LaunchAgent runs `scripts/weekly_run.sh` at three times (Eastern), so every game gets a fresh prediction shortly before kickoff:
 - **Thursday 12:00 PM**, before Thursday Night Football
-- **Sunday 11:00 AM**, after most injury news and before the 1 PM games
+- **Sunday 8:00 AM**, after the final injury reports and before the 9:30 AM London games and the 1 PM games
 - **Monday 12:00 PM**, before Monday Night Football
 
 Each run:
@@ -91,7 +91,7 @@ Each run:
 4. takes an early snapshot of prime-time betting splits
 5. commits and pushes `reports/predictions/`, `reports/live_tracking.csv` and the splits files
 
-The commit history is a timestamped record showing the predictions were made before the games. If the Mac is asleep at a scheduled time, the run happens when it wakes. Output goes to `logs/weekly_run.log`.
+The commit history is a timestamped record showing the predictions were made before the games. If the Mac is asleep at a scheduled time, the run happens when it wakes; each run first waits up to 10 minutes for the network. Output goes to `logs/weekly_run.log`, with the time each step starts.
 
 ```bash
 cp scripts/com.nflpredictor.weekly.plist ~/Library/LaunchAgents/
@@ -100,7 +100,7 @@ launchctl kickstart gui/$(id -u)/com.nflpredictor.weekly                        
 launchctl bootout gui/$(id -u)/com.nflpredictor.weekly                                   # uninstall
 ```
 
-A second LaunchAgent, `scripts/com.nflpredictor.splits.plist`, runs `scripts/splits_run.sh` on Thursday, Sunday and Monday at 7:00 PM and 8:00 PM. Each run snapshots the DraftKings betting splits for prime-time games that haven't kicked off, then commits and pushes `reports/prime_time_splits.csv`. It also runs Friday and Tuesday at 9:00 AM to add the previous night's game to the Action Network history (Sunday night's game is added by Monday's noon run). If the network isn't up yet (right after the Mac wakes), it retries once a minute later. Output goes to `logs/splits_run.log`. Install it the same way, with `splits` in place of `weekly`.
+A second LaunchAgent, `scripts/com.nflpredictor.splits.plist`, runs `scripts/splits_run.sh` on Thursday, Sunday and Monday at 7:00 PM and 8:00 PM. Each run snapshots the DraftKings betting splits for prime-time games that haven't kicked off, then commits and pushes `reports/prime_time_splits.csv`. It also runs Friday and Tuesday at 9:00 AM to add the previous night's game to the Action Network history (Sunday night's game is added by Monday's noon run). If the network isn't up yet (right after the Mac wakes), it waits up to 10 minutes, then retries once a minute later; a DraftKings failure no longer stops the Action Network update. Output goes to `logs/splits_run.log`. Install it the same way, with `splits` in place of `weekly`.
 
 The project must live outside `~/Documents`, `~/Desktop` and `~/Downloads`, because macOS blocks background jobs from reading those folders. The paths in the plist point to `~/Projects/NFLGamePredictorModel`. Next season, update `CURRENT_SEASON` in `src/config.py`.
 

@@ -4,22 +4,24 @@ import pandas as pd
 from src.splits import disagreements, graded, majority_record, parse_dk
 
 
+# Mirrors the DraftKings layout as of Nov 2026: one column header per game, then a labeled list per market.
 def _side(name, odds, handle, bets):
-    return (f'<div class="tb-sodd flex"><div class="tb-slipline flex-1 font-medium">{name}</div>'
-            f'<div class="flex-1"><a class="tb-odd-s bg-neutral-900" href="#">{odds}</a></div>'
-            f'<div class="flex-1">{handle}%<div class="tb-progress"><div style="width: {handle}%"></div></div></div>'
-            f'<div class="flex-1">{bets}%<div class="tb-progress"><div style="width: {bets}%"></div></div></div></div>')
+    return (f'<div class="tb-sodd grid py-1">\n<div class="tb-slipline min-w-0 font-medium">{name}</div>\n'
+            f'<div>\n<a target="_blank" class="tb-odd-s inline-block" href="#">\n{odds}\n</a>\n</div>\n'
+            f'<div>{handle}%\n<div class="tb-progress h-2"><div class="h-2" style="width: {handle}%"></div></div>\n</div>\n'
+            f'<div>{bets}%\n<div class="tb-progress h-2"><div class="h-2" style="width: {bets}%"></div></div>\n</div>\n</div>')
 
 
 def _market(name, *sides):
-    return (f'<div><div class="tb-se-head flex"><div class="flex-1">{name}</div><div class="flex-1">Odds</div>'
-            f'<div class="flex-1">% Handle</div><div class="flex-1">% Bets</div></div>'
-            f'<div class="tb-sm">{"".join(sides)}</div></div>')
+    return (f'<div class="py-2.5">\n<div class="mb-1 text-brand-orange">\n{name}   </div>\n\n'
+            f'<div class="tb-sm space-y-0.5">{"".join(sides)}</div>\n</div>')
 
 
-HTML = ('<div class="tb-se border-b"><div class="tb-se-title flex">'
+HTML = ('<div class="tb-se rounded-lg"><div class="tb-se-title flex">'
         '<h5 class="tb-se-title-new mt-0"><a href="#"><img src="ATL.png"/> ATL Falcons @ <img src="NO.png"/>NO Saints</a></h5>'
-        '<span>10/5, 08:15PM</span></div><div class="tb-market-wrap">'
+        '<span>10/5, 08:15PM</span></div>'
+        '<div class="tb-se-head grid"><div>Selection</div><div>Odds</div><div>Handle</div><div>Bets</div></div>'
+        '<div class="tb-market-wrap divide-y">'
         + _market("Moneyline", _side("NO Saints", "−122", 55, 59), _side("ATL Falcons", "+102", 45, 41))
         + _market("Spread", _side("NO Saints -1.5", "−108", 70, 62), _side("ATL Falcons +1.5", "−112", 30, 38))
         + _market("Total", _side("Over 47.5", "−115", 90, 71), _side("Under 47.5", "−105", 10, 29))
@@ -36,6 +38,15 @@ def test_parse_dk_reads_every_market_and_side():
     assert sp.loc["NO Saints", "line"] == -1.5 and sp.loc["ATL Falcons", "line"] == 1.5
     tot = d[d.market == "total"].set_index("side_name")
     assert tot.loc["Over", "line"] == 47.5 and tot.loc["Under", "handle_pct"] == 10
+
+
+def test_page_without_games_gives_no_rows_instead_of_crashing():
+    from src.splits import _to_games
+    empty = parse_dk("<html>No games this week</html>")
+    assert empty.empty and "away_name" in empty
+    games = pd.DataFrame({"game_id": ["G"], "away_team": ["ATL"], "home_team": ["NO"]})
+    assert _to_games(empty, games, {"Falcons": "ATL", "Saints": "NO"}).empty
+    assert len(_to_games(parse_dk(HTML), games, {"Falcons": "ATL", "Saints": "NO"})) == 6
 
 
 def _graded(away_score, home_score):

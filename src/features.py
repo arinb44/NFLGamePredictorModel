@@ -229,6 +229,8 @@ def _league_home_margin(games: pd.DataFrame) -> pd.Series:
     Captures the decline in home-field advantage without looking ahead."""
     hm = games[~games.neutral & games.home_score.notna()]
     by_season = (hm.home_score - hm.away_score).groupby(hm.season).mean()
+    # Include seasons with no finished game yet (before the opener), so they still get a value.
+    by_season = by_season.reindex(range(by_season.index.min(), games.season.max() + 1))
     trailing = by_season.rolling(3, min_periods=1).mean().shift(1)
     return trailing.fillna(by_season.iloc[0])
 
