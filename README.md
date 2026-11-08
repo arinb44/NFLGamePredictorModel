@@ -1,8 +1,8 @@
 # NFL Game Predictor Model
 
-[![Live demo](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://nflgamepredictormodel.streamlit.app)
+[![Live dashboard](https://img.shields.io/badge/live-dashboard-2a78d6)](https://arinb44.github.io/NFLGamePredictorModel/)
 
-**[Open the live dashboard](https://nflgamepredictormodel.streamlit.app)**: this week's games with win probabilities, spreads and the reasons behind each prediction. It updates automatically three times a week.
+**[Open the live dashboard](https://arinb44.github.io/NFLGamePredictorModel/)**: this week's games with win probabilities, spreads and the reasons behind each prediction. It updates automatically three times a week. The first visit takes 10–30 seconds to load.
 
 A machine learning model that predicts the **win probability** of each team in an NFL game and explains **which factors drove the prediction**.
 
@@ -43,6 +43,7 @@ src/
   coverage.py       man/zone and coverage-type analytics from nflverse participation data (2018+)
   spread.py         predicted point spread (margin), cover probabilities, record against the spread
   splits.py         prime-time (TNF/SNF/MNF) betting splits (Action Network history, DraftKings live), public vs. Vegas
+  pages.py          builds the GitHub Pages copy of the dashboard (runs in the browser via stlite)
 notebooks/
   01_data_exploration.ipynb
   02_features.ipynb
@@ -54,6 +55,7 @@ app/
 tests/
   test_leakage.py   proves features only use information from before kickoff
   test_splits.py    DraftKings splits parsing and grading
+  test_qb_status.py who starts at QB: injuries, roster status, left early, standing starters
 data/               downloaded data (git-ignored)
 models/             tuned feature settings (tracked) and trained models (git-ignored)
 reports/            evaluation results, weekly predictions (reports/predictions/), prime-time betting splits
@@ -166,10 +168,11 @@ The dashboard's **This Week** page shows the same breakdown as a waterfall chart
 
 ## Dashboard
 
-**Hosted version: https://nflgamepredictormodel.streamlit.app** (Streamlit Community Cloud).
-- The hosted app downloads its data from the `dashboard-data` GitHub Release, which each scheduled run republishes with `python -m src.publish`.
-- It checks for new data hourly.
-- Its dependencies are pinned in `app/requirements.txt`.
+**Hosted version: https://arinb44.github.io/NFLGamePredictorModel/** (GitHub Pages).
+- The same `app/dashboard.py` runs in the visitor's browser with [stlite](https://github.com/whitphx/stlite) (Streamlit on Pyodide), so there's no server memory limit.
+- `python -m src.pages` builds the site in `_site/`: the code, the reports and the data in one `bundle.zip`.
+- The Pages workflow (`.github/workflows/pages.yml`) downloads the `dashboard-data` GitHub Release, which each scheduled run republishes with `python -m src.publish`, and the latest nflverse schedule. It rebuilds the site after every push to `main` and hourly, so final scores show up within the hour.
+- The older Streamlit Community Cloud copy (https://nflgamepredictormodel.streamlit.app) runs from the same code; its dependencies are pinned in `app/requirements.txt`.
 
 To run it locally, `streamlit run app/dashboard.py` opens the same dashboard:
 
