@@ -8,6 +8,7 @@ Usage:
     python -m src.data_loader --start 2020    # only 2020+
 """
 import argparse
+import sys
 import time
 from pathlib import Path
 from typing import Iterable, List, Optional
@@ -27,6 +28,8 @@ from src.config import (
 
 
 def _is_stale(path: Path) -> bool:
+    if sys.platform == "emscripten":  # in-browser dashboard (src/pages.py): can't download (CORS); the Pages build refreshes
+        return False
     age_hours = (time.time() - path.stat().st_mtime) / 3600
     return age_hours > STALE_AFTER_HOURS
 

@@ -22,3 +22,6 @@ models/*.pkl
 
 # Automation logs
 logs/
+
+# GitHub Pages build (python -m src.pages)
+_site/

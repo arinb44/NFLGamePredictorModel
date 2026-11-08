@@ -1,0 +1,41 @@
+# Builds the in-browser dashboard (python -m src.pages) and deploys it to GitHub Pages.
+# Runs after each scheduled-job push (they publish the data bundle first) and hourly, so final
+# scores from nflverse show up within the hour, like the Streamlit app's hourly refresh.
+name: Pages
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "17 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - run: pip install pandas pyarrow requests
+      - name: Download the published data bundle and the latest schedule
+        run: python -c "from src.publish import download; from src.data_loader import load_schedules; download(); load_schedules(refresh=True)"
+      - run: python -m src.pages
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: _site
+      - id: deploy
+        uses: actions/deploy-pages@v5
