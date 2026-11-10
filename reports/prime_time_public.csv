@@ -1023,3 +1023,9 @@ captured_at,game_id,market,side,line,odds,handle_pct,bets_pct,source
 2026-11-10T00:00:15Z,2026_09_TB_CHI,spread,TB,6.5,-105,34,29,action_network
 2026-11-10T00:00:15Z,2026_09_TB_CHI,total,over,47.5,-109,69,70,action_network
 2026-11-10T00:00:15Z,2026_09_TB_CHI,total,under,47.5,-111,31,30,action_network
+2026-11-10T14:05:01Z,2026_09_BUF_MIN,moneyline,BUF,,-192,83,89,action_network
+2026-11-10T14:05:01Z,2026_09_BUF_MIN,moneyline,MIN,,160,17,11,action_network
+2026-11-10T14:05:01Z,2026_09_BUF_MIN,spread,BUF,-3.5,-105,47,61,action_network
+2026-11-10T14:05:01Z,2026_09_BUF_MIN,spread,MIN,3.5,-118,53,39,action_network
+2026-11-10T14:05:01Z,2026_09_BUF_MIN,total,under,46.0,-110,46,38,action_network
+2026-11-10T14:05:01Z,2026_09_BUF_MIN,total,over,46.0,-110,54,62,action_network
