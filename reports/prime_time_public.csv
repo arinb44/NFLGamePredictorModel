@@ -1017,3 +1017,9 @@ captured_at,game_id,market,side,line,odds,handle_pct,bets_pct,source
 2026-11-06T21:39:30Z,2026_09_JAX_BAL,spread,JAX,-9.5,-108,55,69,action_network
 2026-11-06T21:39:30Z,2026_09_JAX_BAL,total,over,40.0,-109,74,81,action_network
 2026-11-06T21:39:30Z,2026_09_JAX_BAL,total,under,40.0,-110,26,19,action_network
+2026-11-10T00:00:15Z,2026_09_TB_CHI,moneyline,TB,,240,31,7,action_network
+2026-11-10T00:00:15Z,2026_09_TB_CHI,moneyline,CHI,,-295,69,93,action_network
+2026-11-10T00:00:15Z,2026_09_TB_CHI,spread,CHI,-6.5,-115,66,71,action_network
+2026-11-10T00:00:15Z,2026_09_TB_CHI,spread,TB,6.5,-105,34,29,action_network
+2026-11-10T00:00:15Z,2026_09_TB_CHI,total,over,47.5,-109,69,70,action_network
+2026-11-10T00:00:15Z,2026_09_TB_CHI,total,under,47.5,-111,31,30,action_network
