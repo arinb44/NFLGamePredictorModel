@@ -1029,3 +1029,9 @@ captured_at,game_id,market,side,line,odds,handle_pct,bets_pct,source
 2026-11-10T14:05:01Z,2026_09_BUF_MIN,spread,MIN,3.5,-118,53,39,action_network
 2026-11-10T14:05:01Z,2026_09_BUF_MIN,total,under,46.0,-110,46,38,action_network
 2026-11-10T14:05:01Z,2026_09_BUF_MIN,total,over,46.0,-110,54,62,action_network
+2026-11-13T14:11:10Z,2026_10_WAS_NYG,moneyline,NYG,,-125,54,75,action_network
+2026-11-13T14:11:10Z,2026_10_WAS_NYG,moneyline,WAS,,105,46,25,action_network
+2026-11-13T14:11:10Z,2026_10_WAS_NYG,spread,NYG,-1.5,-110,35,55,action_network
+2026-11-13T14:11:10Z,2026_10_WAS_NYG,spread,WAS,1.5,-110,65,45,action_network
+2026-11-13T14:11:10Z,2026_10_WAS_NYG,total,under,40.5,-110,47,44,action_network
+2026-11-13T14:11:10Z,2026_10_WAS_NYG,total,over,40.5,-115,53,56,action_network
