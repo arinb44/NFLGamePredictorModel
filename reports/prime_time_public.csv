@@ -1035,3 +1035,9 @@ captured_at,game_id,market,side,line,odds,handle_pct,bets_pct,source
 2026-11-13T14:11:10Z,2026_10_WAS_NYG,spread,WAS,1.5,-110,65,45,action_network
 2026-11-13T14:11:10Z,2026_10_WAS_NYG,total,under,40.5,-110,47,44,action_network
 2026-11-13T14:11:10Z,2026_10_WAS_NYG,total,over,40.5,-115,53,56,action_network
+2026-11-17T00:03:33Z,2026_10_PIT_CIN,moneyline,CIN,,-225,79,84,action_network
+2026-11-17T00:03:33Z,2026_10_PIT_CIN,moneyline,PIT,,185,21,16,action_network
+2026-11-17T00:03:33Z,2026_10_PIT_CIN,spread,CIN,-4.5,-111,47,50,action_network
+2026-11-17T00:03:33Z,2026_10_PIT_CIN,spread,PIT,4.5,-108,53,50,action_network
+2026-11-17T00:03:33Z,2026_10_PIT_CIN,total,over,49.5,-111,78,72,action_network
+2026-11-17T00:03:33Z,2026_10_PIT_CIN,total,under,49.5,-110,22,28,action_network
