@@ -1041,3 +1041,9 @@ captured_at,game_id,market,side,line,odds,handle_pct,bets_pct,source
 2026-11-17T00:03:33Z,2026_10_PIT_CIN,spread,PIT,4.5,-108,53,50,action_network
 2026-11-17T00:03:33Z,2026_10_PIT_CIN,total,over,49.5,-111,78,72,action_network
 2026-11-17T00:03:33Z,2026_10_PIT_CIN,total,under,49.5,-110,22,28,action_network
+2026-11-17T14:05:04Z,2026_10_LAC_BAL,moneyline,BAL,,-225,49,81,action_network
+2026-11-17T14:05:04Z,2026_10_LAC_BAL,moneyline,LAC,,185,51,19,action_network
+2026-11-17T14:05:04Z,2026_10_LAC_BAL,spread,LAC,4.5,-110,46,51,action_network
+2026-11-17T14:05:04Z,2026_10_LAC_BAL,spread,BAL,-4.5,-109,54,49,action_network
+2026-11-17T14:05:04Z,2026_10_LAC_BAL,total,over,39.5,-111,72,68,action_network
+2026-11-17T14:05:04Z,2026_10_LAC_BAL,total,under,39.5,-111,28,32,action_network
