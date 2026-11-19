@@ -213,7 +213,7 @@ html,body,.stApp{{background:var(--ground);color:var(--text)}}
   .st-key-mast{{flex-direction:column;align-items:flex-start;gap:6px}}.st-key-strip{{width:100%}}}}
 @media (max-width:860px){{
   :root{{--pad:18px}}
-  .fw-hero{{grid-template-columns:1fr;padding:32px 0 0}}.fw-hero h1{{font-size:52px}}.fw-hint{{grid-column:1}}
+  .fw-hero{{grid-template-columns:1fr;padding:32px 0 0}}.fw-hero h1{{font-size:clamp(32px,10.5vw,52px);white-space:nowrap}}.fw-hint{{grid-column:1}}
   .fw-week{{min-width:0}}.st-key-field{{grid-template-columns:1fr 1fr}}
   .fw-top h1{{font-size:36px}}
   .st-key-mark button p{{font-size:20px!important}}
