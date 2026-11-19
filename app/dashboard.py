@@ -21,12 +21,12 @@ sys.path.insert(0, str(ROOT))
 
 def _reload_changed_src():
     """Streamlit reruns this script when it changes but keeps already-imported modules, so after
-    a push (or a local edit) src/ code would stay stale until a reboot. Reload src modules not yet
-    stamped with their file's modification time, or whose file changed since."""
+    a push (or a local edit) src/ code and the app's own modules (theme, matchup_card) would stay stale
+    until a reboot. Reload those not yet stamped with their file's modification time, or whose file changed since."""
     import importlib
     for name, mod in list(sys.modules.items()):
         path = getattr(mod, "__file__", None)
-        if name.startswith("src.") and path and Path(path).exists():
+        if (name.startswith("src.") or name in ("theme", "matchup_card")) and path and Path(path).exists():
             mtime = Path(path).stat().st_mtime
             if getattr(mod, "_loaded_mtime", None) != mtime:
                 importlib.reload(mod)._loaded_mtime = mtime
@@ -61,11 +61,13 @@ if not (PROCESSED_DIR / "games_features.parquet").exists() or HOSTED_MARKER.exis
     sync_hosted_data()
 
 # ---------------------------------------------------------------- style
-# Validated categorical palette (first three slots are safe for all pairs and
-# for color-vision deficiency). Blue <-> red is the diverging pair.
-BLUE, ORANGE, AQUA = "#2a78d6", "#eb6834", "#1baf7a"
-RED, GRAY = "#e34948", "#8a8984"
-TEXT_2, GRID = "#b5b3ad", "#2a2a2e"
+# Colors, fonts, CSS, the chart style and the formation navigation live in theme.py.
+import theme  # noqa: E402
+from theme import AWAY, GOLD, HOME, REF, style  # noqa: E402
+
+# Short names used throughout: the three series (Model, Vegas, Elo), the away/worse red, the gray baselines.
+BLUE, ORANGE, AQUA, RED, GRAY = theme.MODEL, theme.VEGAS, theme.ELO, theme.BAD, theme.OTHER
+TEXT_2, GRID = theme.MUTED, theme.RULE
 FEATURE_LABELS = {
     "diff_qb_epa": "QB EPA per play", "diff_qb_cpoe": "QB completion % over expected",
     "diff_qb_experience": "QB experience", "diff_qb_changed": "QB change from last game",
@@ -92,15 +94,9 @@ FEATURE_LABELS = {
 }
 MODEL_COLORS = alt.Scale(domain=["Model", "Vegas", "Elo"], range=[BLUE, ORANGE, AQUA])
 
-st.set_page_config(page_title="NFL Win Probability", page_icon="🏈", layout="wide")
-
-
-def style(chart: alt.Chart, height: int = 320) -> alt.Chart:
-    return (chart.properties(height=height)
-            .configure_axis(gridColor=GRID, domainColor=GRID, tickColor=GRID,
-                            labelColor=TEXT_2, titleColor=TEXT_2, labelFontSize=12, titleFontSize=12)
-            .configure_legend(labelColor=TEXT_2, titleColor=TEXT_2, orient="top")
-            .configure_view(strokeWidth=0))
+st.set_page_config(page_title="Fourth and Why", page_icon=str(Path(__file__).parent / "assets" / "favicon.png"),
+                   layout="wide", initial_sidebar_state="collapsed")
+theme.inject_css()
 
 
 def line_chart(df, x, y, color=None, color_scale=None, tooltip=None, y_title=None, x_title=None,
@@ -177,17 +173,17 @@ def team_scatter(df, x, y, x_title, y_title, focus, x_fmt="%", y_fmt="%", revers
         y=alt.Y(f"{y}:Q", title=y_title, axis=alt.Axis(format=y_fmt),
                 scale=alt.Scale(zero=False, padding=24, reverse=reverse_y)),
         tooltip=tooltip or ["team"])
-    dots = base.mark_circle(size=90, stroke="black", strokeWidth=1).encode(
+    dots = base.mark_circle(size=90, stroke=theme.GROUND, strokeWidth=1.5).encode(
         color=alt.Color("group:N", legend=None, scale=alt.Scale(domain=["Selected team", "Other teams"],
-                                                                range=[ORANGE, BLUE])),
+                                                                range=[GOLD, GRAY])),
         size=alt.condition(alt.datum.group == "Selected team", alt.value(220), alt.value(90)))
     # Label the selected team plus the 3 most extreme teams on each axis, to keep labels readable.
     ext = set(df.nlargest(3, x).team) | set(df.nsmallest(3, x).team) | set(df.nlargest(3, y).team) | \
         set(df.nsmallest(3, y).team) | {focus}
     names = base.transform_filter(alt.FieldOneOfPredicate(field="team", oneOf=sorted(ext))).mark_text(
         dy=-11, fontSize=11, color=TEXT_2).encode(text="team:N")
-    layers = [alt.Chart(pd.DataFrame({"v": [float(df[x].mean())]})).mark_rule(color=GRAY, strokeDash=[4, 4]).encode(x="v:Q"),
-              alt.Chart(pd.DataFrame({"v": [float(df[y].mean())]})).mark_rule(color=GRAY, strokeDash=[4, 4]).encode(y="v:Q")]
+    layers = [alt.Chart(pd.DataFrame({"v": [float(df[x].mean())]})).mark_rule(color=REF, strokeDash=[4, 4]).encode(x="v:Q"),
+              alt.Chart(pd.DataFrame({"v": [float(df[y].mean())]})).mark_rule(color=REF, strokeDash=[4, 4]).encode(y="v:Q")]
     if diagonal:
         lo, hi = float(min(df[x].min(), df[y].min())), float(max(df[x].max(), df[y].max()))
         layers.append(alt.Chart(pd.DataFrame({"a": [lo, hi], "b": [lo, hi]})).mark_line(
@@ -264,11 +260,9 @@ def load_spread(version):
 def team_meta():
     from src.data_loader import load_teams
     t = load_teams().set_index("team_abbr")
-    from matchup_card import glow_color
+    from matchup_card import team_color
     return {k: {"name": r.team_name, "nick": r.team_nick, "logo": r.team_logo_espn,
-                "logo_dark": str(r.team_logo_espn).replace("/500/", "/500-dark/"),
-                "city": r.team_name[: -len(r.team_nick)].strip() if r.team_name.endswith(r.team_nick) else "",
-                "glow": glow_color(r.team_color, r.team_color2)} for k, r in t.iterrows()}
+                "color": team_color(r.team_color), "color2": team_color(r.team_color2)} for k, r in t.iterrows()}
 
 
 @st.cache_data(ttl=3600)
@@ -294,51 +288,6 @@ def stadiums():
     return dict(zip(s.game_id, s.stadium))
 
 
-def waterfall_chart(e, home, away, height=None):
-    """Horizontal waterfall from 50% to the model's home win probability."""
-    from src.explain import waterfall
-    w = waterfall(e).reset_index(drop=True)
-    w["order"] = range(len(w))
-    final = w.factor == "Model probability"
-    w["kind"] = np.where(final, "Model probability", np.where(w.delta >= 0, f"Pushes toward {home}", f"Pushes toward {away}"))
-    w["label"] = np.where(final, w.end.map(lambda v: f"{v:.1%}"), (w.delta * 100).map(lambda v: f"{v:+.1f}"))
-    w["lo"], w["hi"] = w[["start", "end"]].min(axis=1), w[["start", "end"]].max(axis=1)
-    lo = max(0.0, w.lo.min() - 0.06)
-    hi = min(1.0, w.hi.max() + 0.06)
-    y = alt.Y("factor:N", sort=alt.EncodingSortField("order"), title=None, axis=alt.Axis(labelLimit=220, labelOverlap=False))
-    x_scale = alt.Scale(domain=[lo, hi])
-    bars = alt.Chart(w).mark_bar(cornerRadius=3, height=18).encode(
-        y=y, x=alt.X("start:Q", title=f"{home} win probability", scale=x_scale, axis=alt.Axis(format="%")),
-        x2="end:Q",
-        color=alt.Color("kind:N", legend=alt.Legend(title=None),
-                        scale=alt.Scale(domain=[f"Pushes toward {home}", f"Pushes toward {away}", "Model probability"],
-                                        range=[BLUE, RED, "#c9c7c1"])),
-        tooltip=["factor", alt.Tooltip("start:Q", format=".1%", title="from"),
-                 alt.Tooltip("end:Q", format=".1%", title="to"), "detail"])
-    labels = alt.Chart(w).mark_text(align="left", dx=5, fontSize=11, color=TEXT_2).encode(
-        y=y, x=alt.X("hi:Q", scale=x_scale), text="label:N")
-    even = alt.Chart(pd.DataFrame({"x": [0.5]})).mark_rule(color=GRAY, strokeDash=[4, 4]).encode(
-        x=alt.X("x:Q", scale=x_scale))
-    return style(even + bars + labels, height or 30 * len(w) + 50)
-
-
-def prob_bar(home, away, p_home, p_vegas=None):
-    """Two-segment win-probability bar (away left, home right) with a Vegas tick."""
-    a, h = (1 - p_home) * 100, p_home * 100
-    tick = ""
-    if p_vegas is not None and p_vegas == p_vegas:
-        tick = (f'<div title="Vegas" style="position:absolute;top:-4px;bottom:-4px;left:calc({(1 - p_vegas) * 100:.1f}% - 1.5px);'
-                f'width:3px;background:#ffffff;border-radius:2px;box-shadow:0 0 0 1px #000"></div>')
-    seg = 'display:flex;align-items:center;white-space:nowrap;overflow:hidden'
-    left = f"{away} {a:.0f}%" if a >= 14 else ""
-    right = f"{home} {h:.0f}%" if h >= 14 else ""
-    return (f'<div style="position:relative;margin:6px 0 2px 0">'
-            f'<div style="display:flex;height:28px;border-radius:6px;overflow:hidden;font-size:13px;font-weight:600;color:#fff">'
-            f'<div style="width:{a:.1f}%;background:{ORANGE};{seg};padding-left:8px">{left}</div>'
-            f'<div style="width:{h:.1f}%;background:{BLUE};{seg};justify-content:flex-end;padding-right:8px">{right}</div>'
-            f'</div>{tick}</div>')
-
-
 def _split_bar(pct, color):
     if pd.isna(pct):
         return f'<span style="color:{GRAY}">–</span>'
@@ -348,12 +297,18 @@ def _split_bar(pct, color):
             f'<span style="width:34px;text-align:right;font-variant-numeric:tabular-nums">{pct:.0f}%</span></div>')
 
 
+def mc_icon(ok):
+    from matchup_card import _icon
+    return _icon(ok)
+
+
 def splits_legend():
     dot = 'display:inline-block;width:10px;height:10px;border-radius:5px;margin:0 5px 0 12px'
     return (f'<div style="font-size:13px;color:{TEXT_2};margin-bottom:8px">'
             f'<span style="{dot};margin-left:0;background:{BLUE}"></span>% of the money (handle)'
             f'<span style="{dot};background:{AQUA}"></span>% of the bets'
-            f'<span style="margin-left:14px">✓ = the side that won (or covered / hit)</span></div>')
+            f'<span style="margin-left:14px;display:inline-flex;align-items:center;gap:6px">{mc_icon(True)} '
+            f'the side that won (or covered / hit)</span></div>')
 
 
 def splits_card(sides: pd.DataFrame, meta: dict, source: str) -> str:
@@ -384,22 +339,22 @@ def splits_card(sides: pd.DataFrame, meta: dict, source: str) -> str:
         tag = ""
         if len(public) == 1 and public.result.iloc[0] in ("won", "lost", "push"):
             res = public.result.iloc[0]
-            text, color = {"won": ("Public won", ORANGE), "lost": ("Vegas won", BLUE), "push": ("Push", GRAY)}[res]
-            tag = (f'<span style="padding:1px 6px;border-radius:8px;border:1px solid {color};color:{color};'
-                   f'letter-spacing:.04em">{text}</span>')
+            text = {"won": "Public won", "lost": "Vegas won", "push": "Push"}[res]
+            tag = (f'<span style="padding:1px 8px;border-radius:999px;border:1px solid #3d362f;color:{theme.SOFT};'
+                   f'text-transform:none;letter-spacing:0">{text}</span>')
         body += (f'<div style="{small};display:flex;align-items:center;gap:8px;margin-top:8px">'
                  f'<span>{market}</span>{tag}</div>')
         for s in m.itertuples():
             odds = f"{s.odds:+.0f}".replace("-", "−") if pd.notna(s.odds) else ""
             label = s.Bet.replace(" ML", "")
             won, lost = s.result == "won", s.result == "lost"
-            mark = {"won": f'<span style="color:{AQUA};font-weight:700">✓</span>',
+            mark = {"won": mc_icon(True),
                     "push": f'<span style="color:{GRAY}">P</span>'}.get(s.result, "")
             body += (f'<div style="{grid};font-size:14px;padding:2px 0;opacity:{0.55 if lost else 1}">'
                      f'<span style="font-weight:{700 if won else 500}">{label} '
                      f'<span style="color:{TEXT_2};font-size:12px">{odds}</span></span>'
                      f'{_split_bar(s.handle_pct, BLUE)}{_split_bar(s.bets_pct, AQUA)}{mark}</div>')
-    return (f'<div style="background:#16161a;border:1px solid {GRID};border-radius:12px;padding:14px 16px;'
+    return (f'<div style="background:{theme.PANEL};border:1px solid {GRID};border-radius:6px;padding:14px 16px;'
             f'margin-bottom:16px">{head}{body}</div>')
 
 
@@ -413,41 +368,84 @@ else:
     pred = games.assign(p_home=np.nan, p_elo=np.nan, p_vegas=np.nan)
 
 # ---------------------------------------------------------------- layout
-st.title("NFL Win Probability Model")
-st.caption("Pregame win probabilities from team efficiency, quarterbacks, player availability, "
-           "travel, fatigue and weather. Data: nflverse, Open-Meteo.")
+def week_name(w):
+    return f"Week {w}" if w <= 18 else {19: "Wild Card", 20: "Divisional", 21: "Conference", 22: "Super Bowl"}.get(w, f"Week {w}")
 
-page = st.sidebar.selectbox("Section", ["This Week", "Overview", "Teams", "Team Analytics", "Games", "Players",
-                                        "Situational", "Matchups", "Prime Time", "Model"])
+
+def current_games():
+    """This season's games, with final scores from the schedule (refreshed hourly on the hosted app),
+    so games show their result before the next pipeline run rebuilds the game table."""
+    _sp = RAW_DIR / "schedules.parquet"
+    finals = final_scores(_sp.stat().st_mtime if _sp.exists() else 0)
+    g = games[games.season == games.season.max()].copy()
+    for col in ("home_score", "away_score"):
+        g[col] = g[col].fillna(g.game_id.map(finals[col]))
+    return g
+
+
+LEDES = {
+    "Overview": "How the model was built and tested, and the league trend it has to work against.",
+    "Teams": "One team at a time: how strong it looked before each game, and how each game went.",
+    "Team Analytics": "Third downs, fourth downs and pass coverage for one team, set against the rest of the league.",
+    "Games": "Every game the model has called: its probability next to Vegas, and the factors behind any one prediction.",
+    "Players": "Who was missing each week, and how much of a team's offense or defense went with them.",
+    "Situational": "How travel, the body clock, weather and fatigue move results.",
+    "Matchups": "Quarterbacks in bad weather and prime time, pass rush against protection, and offenses against the blitz.",
+    "Prime Time": "Betting splits for prime-time games: where the money and the bets went, and whether the public or the book won.",
+    "Model": "How well the probabilities hold up, how the spreads compare with Vegas, and what the model weighs most.",
+}
+
+page = st.session_state.setdefault("page", "Home")
+if page not in theme.SECTIONS:
+    page = st.session_state.page = "Home"
+
+if page == "Home":
+    meta, ko = team_meta(), kickoffs()
+    cg = current_games().assign(kickoff=lambda d: d.game_id.map(ko)).sort_values(["kickoff", "game_id"])
+    left = cg[cg.home_score.isna()]
+    wk = int(left.week.min()) if len(left) else int(cg.week.max())
+    wg_, left = cg[cg.week == wk], left[left.week == wk]
+    card = f"{len(wg_)} games" + (f", {len(left)} still to play" if 0 < len(left) < len(wg_) else "") + ". "
+    if len(left):
+        nx = left.iloc[0]
+        when = nx.kickoff.strftime("%A %-I:%M %p ET") if pd.notna(nx.kickoff) else "soon"
+        card += (f"{'First' if len(left) == len(wg_) else 'Next'} kickoff {when}, "
+                 f"{meta[nx.away_team]['nick']} at {meta[nx.home_team]['nick']}.")
+    else:
+        card += "All played."
+    st.html(f'<header class="fw-hero"><div><h1>{theme.MARK}<span>{theme.WORD}</span></h1>'
+            '<p>Pregame win probabilities for every NFL game, and the reasons behind each one: quarterbacks, '
+            'player availability, travel, rest and weather.</p></div>'
+            f'<div class="fw-week"><b>{week_name(wk)}</b>{card}</div>'
+            '<p class="fw-hint">Every section is a player. The quarterback has this week\'s games.'
+            '<span class="fw-hov"> Hover a player to see the assignment.</span></p></header>')
+    theme.home_field()
+    theme.footer()
+    st.stop()
+
+theme.masthead(page)
+if page != "This Week":
+    theme.page_header(page, LEDES[page])
 
 # ================================================================ This Week
 if page == "This Week":
     from src.config import MODELS_DIR
-    from src.explain import explain
+    from src.explain import explain, waterfall
     from src.evaluate import moneyline_prob
     from src.matchups import bad_weather
-    from matchup_card import card_css, card_html
+    import matchup_card as mc
     meta = team_meta()
     ko = kickoffs()
     venues = stadiums()
-    st.html(card_css())
     model_path = MODELS_DIR / "logistic.joblib"
     bundle = load_model(model_path.stat().st_mtime)
 
-    cur = int(games.season.max())
-    # Final scores from the schedule (refreshed hourly on the hosted app), so games show their
-    # result before the next pipeline run rebuilds the game table.
-    _sp = RAW_DIR / "schedules.parquet"
-    finals = final_scores(_sp.stat().st_mtime if _sp.exists() else 0)
-    cur_games = games[games.season == cur].copy()
-    for col in ("home_score", "away_score"):
-        cur_games[col] = cur_games[col].fillna(cur_games.game_id.map(finals[col]))
+    cur_games = current_games()
     wk_all = sorted(cur_games.week.unique())
     upcoming_weeks = sorted(cur_games[cur_games.home_score.isna()].week.unique())
-    f1, f2 = st.columns([1, 3])
-    week = f1.selectbox("Week", wk_all, index=wk_all.index(upcoming_weeks[0]) if upcoming_weeks else len(wk_all) - 1,
-                        format_func=lambda w: f"Week {w}" if w <= 18 else {19: "Wild Card", 20: "Divisional",
-                                                                           21: "Conference", 22: "Super Bowl"}.get(w, f"Week {w}"))
+    head, wk_col = st.columns([4, 1], vertical_alignment="bottom")
+    week = wk_col.selectbox("Week", wk_all, index=wk_all.index(upcoming_weeks[0]) if upcoming_weeks else len(wk_all) - 1,
+                            format_func=week_name)
     wg = cur_games[cur_games.week == week].copy()
     wg["kickoff"] = wg.game_id.map(ko)
     wg = wg.sort_values(["kickoff", "game_id"]).reset_index(drop=True)
@@ -474,20 +472,6 @@ if page == "This Week":
                                  cover_prob_calibrated(wg.margin, wg.spread_line.fillna(0), sp["cover_k"]), np.nan)
     else:
         wg["margin"], wg["p_cover"] = np.nan, np.nan
-
-    def spread_line_txt(r):
-        if r.margin != r.margin:
-            return ""
-        txt = f"Spread: model **{fmt_spread(r.home_team, r.away_team, r.margin)}**"
-        if r.spread_line == r.spread_line:
-            txt += f" · Vegas **{fmt_spread(r.home_team, r.away_team, r.spread_line)}**"
-            side, ps = (r.home_team, r.p_cover) if r.p_cover >= 0.5 else (r.away_team, 1 - r.p_cover)
-            txt += f" · {side} covers {ps:.0%}"
-        return txt
-
-    detail = st.session_state.get("detail_game")
-    if detail not in set(wg.game_id):
-        detail = None
 
     qb_path = PROCESSED_DIR / "qb_status.parquet"
     qb_status = pd.read_parquet(qb_path) if qb_path.exists() else pd.DataFrame(columns=["game_id", "status"])
@@ -521,112 +505,92 @@ if page == "This Week":
             out.append(("Neutral site", ":material/public:", "gray"))
         return out
 
-    if detail is None:
-        st.header(f"{cur} — " + (f"Week {week}" if week <= 18 else "Playoffs"))
-        n_up = int((~played_now).sum())
-        st.caption(f"{len(wg)} games · {n_up} still to play. Bars show the model's win probability "
-                   f"(orange = away, blue = home); the white tick is Vegas. Played games show the probability recorded "
-                   f"before kickoff.")
-        cols = st.columns(2)
-        for i, r in wg.iterrows():
-            e = exps[r.game_id]
-            with cols[i % 2].container(border=True):
-                when = r.kickoff.strftime("%a %b %-d · %-I:%M %p ET") if pd.notna(r.kickoff) else ""
-                st.html(card_html(r.away_team, r.home_team, meta, r.p_show, date=when, compact=True))
-                st.caption(f"{r.away_qb_name} vs {r.home_qb_name}")
-                st.markdown(prob_bar(r.home_team, r.away_team, r.p_show, r.p_vegas), unsafe_allow_html=True)
-                vegas_txt = ""
-                if r.p_vegas == r.p_vegas:
-                    vfav, vp = (r.home_team, r.p_vegas) if r.p_vegas >= 0.5 else (r.away_team, 1 - r.p_vegas)
-                    vegas_txt = f"Vegas: {vfav} {vp:.0%}"
-                if played_now[i]:
-                    winner = r.home_team if r.home_score > r.away_score else r.away_team
-                    pick = r.home_team if r.p_show >= 0.5 else r.away_team
-                    mark = "✓" if winner == pick else "✗"
-                    ats = ""
-                    if r.margin == r.margin and r.spread_line == r.spread_line:
-                        diff = (r.home_score - r.away_score) - r.spread_line
-                        side = r.home_team if r.margin > r.spread_line else r.away_team
-                        ok = (diff > 0) if r.margin > r.spread_line else (diff < 0)
-                        ats = " · spread: push" if diff == 0 else f" · spread pick {side} {'✓' if ok else '✗'}"
-                    st.caption(f"**Final: {r.away_team} {r.away_score:.0f} – {r.home_team} {r.home_score:.0f}** "
-                               f"(model picked {pick} {mark}{ats}) · {vegas_txt}")
-                else:
-                    st.caption(vegas_txt)
-                if spread_line_txt(r):
-                    st.caption(spread_line_txt(r))
-                b = badges(r)
-                if b:
-                    st.markdown(" ".join(f":{c}-badge[{ic} {t}]" for t, ic, c in b))
-                reasons = "".join(
-                    f"<div style='font-size:13px;line-height:1.35;margin:3px 0'><b>{f['favors']} "
-                    f"+{abs(f['pct_points']) * 100:.1f}%</b> {f['factor']} "
-                    f"<span style='color:{TEXT_2}'>— {f['detail']}</span></div>" for f in e["factors"][:3])
-                st.markdown(f"<div style='margin:4px 0 8px 0'>{reasons}</div>", unsafe_allow_html=True)
-                if st.button("Full breakdown", key=f"open_{r.game_id}", icon=":material/insights:"):
-                    st.session_state["detail_game"] = r.game_id
-                    st.rerun()
-    else:
-        r = wg[wg.game_id == detail].iloc[0]
-        e = exps[detail]
-        if st.button("All games", icon=":material/arrow_back:"):
-            st.session_state.pop("detail_game", None)
-            st.rerun()
-        when = r.kickoff.strftime("%a · %b %-d · %-I:%M %p ET") if pd.notna(r.kickoff) else ""
-        venue = venues.get(r.game_id, "") + (" · neutral site" if r.neutral else "")
-        st.html(card_html(r.away_team, r.home_team, meta, r.p_show, date=when,
-                          sub=f"{r.away_qb_name} vs {r.home_qb_name}", venue=venue,
-                          pill="Pregame win probability" if r.home_score == r.home_score else "Win probability"))
-        if r.p_vegas == r.p_vegas:
-            vfav, vp = (r.home_team, r.p_vegas) if r.p_vegas >= 0.5 else (r.away_team, 1 - r.p_vegas)
-            st.metric(f"Vegas: {vfav} win", f"{vp:.1%}", f"{(r.p_show - r.p_vegas) * 100:+.1f} pts model vs Vegas on {r.home_team}",
-                      delta_color="off")
-        st.markdown(prob_bar(r.home_team, r.away_team, r.p_show, r.p_vegas), unsafe_allow_html=True)
-        if r.margin == r.margin:
-            s1, s2, s3 = st.columns(3)
-            s1.metric("Model spread", fmt_spread(r.home_team, r.away_team, r.margin))
-            s2.metric("Vegas spread", fmt_spread(r.home_team, r.away_team, r.spread_line))
-            if r.p_cover == r.p_cover:
-                side, ps = (r.home_team, r.p_cover) if r.p_cover >= 0.5 else (r.away_team, 1 - r.p_cover)
-                s3.metric(f"{side} covers", f"{ps:.0%}")
-            st.caption("Cover chances are calibrated on 2012–2018: historically, disagreeing with Vegas has been worth "
-                       "little (a 3-point gap ≈ 53%), and on 2019–2025 the model's spread did not beat the line.")
-        b = badges(r)
-        if b:
-            st.markdown(" ".join(f":{c}-badge[{ic} {t}]" for t, ic, c in b))
-        if r.p_vegas == r.p_vegas and abs(r.p_show - r.p_vegas) >= 0.10:
+    def pick(gid):
+        st.session_state.update(detail_game=gid, picked=True, scroll=True)
+
+    # The selected game: the one tapped, else the next to kick off, else the first.
+    sel = st.session_state.get("detail_game")
+    picked = sel in set(wg.game_id) and st.session_state.get("picked", False)
+    if not picked:
+        sel = wg[~played_now].game_id.iloc[0] if (~played_now).any() else wg.game_id.iloc[0]
+
+    n_up = int((~played_now).sum())
+    days = wg.kickoff.dropna()
+    span = (f"{days.min():%A %b %-d} to {days.max():%A %b %-d}" if days.dt.date.nunique() > 1
+            else f"{days.min():%A %b %-d}") if len(days) else ""
+    status = "all still to play" if n_up == len(wg) else "all played" if n_up == 0 else f"{n_up} still to play"
+    head.html(f'<div class="fw-top"><h1>{week_name(week)}</h1><p>{len(wg)} games, {status}, {span}. Each row: the dot is '
+              "the model's win chance for the home team, the short line is Vegas, the tall line is 50%; underneath, the "
+              "game's biggest factor." + (" Played games show the probability recorded before kickoff." if n_up < len(wg) else "")
+              + "</p></div>")
+    st.html(mc.css(sel, picked))
+
+    def tags(r):
+        return [(t, t.startswith("Model vs") or "left last game early" in t) for t, _, _ in badges(r)]
+
+    with st.container(key="tw"):
+        list_col, detail_col = st.columns([5, 8])
+    with list_col:
+        st.html(f'<h3 class="fw-lh">All {week_name(week)} games</h3>')
+        with st.container(key="games"):
+            for i, r in wg.iterrows():
+                e = exps[r.game_id]
+                with st.container(key=f"g_{r.game_id}"):
+                    st.html(mc.row_html(r, meta, e["factors"][0] if e["factors"] else None, tags(r), bool(played_now[i])))
+                    fav, pf = (r.home_team, r.p_show) if r.p_show >= 0.5 else (r.away_team, 1 - r.p_show)
+                    st.button(f"{meta[r.away_team]['nick']} at {meta[r.home_team]['nick']}, {fav} {pf:.0%}",
+                              key=f"gb_{r.game_id}", on_click=pick, args=(r.game_id,))
+
+    r = wg[wg.game_id == sel].iloc[0]
+    e = exps[sel]
+    played = bool(played_now.loc[r.name])
+    spread = {}
+    if r.margin == r.margin:
+        spread["Model spread"] = fmt_spread(r.home_team, r.away_team, r.margin)
+        if r.spread_line == r.spread_line:
+            spread["Vegas spread"] = fmt_spread(r.home_team, r.away_team, r.spread_line)
+        if r.p_cover == r.p_cover:
+            side, ps = (r.home_team, r.p_cover) if r.p_cover >= 0.5 else (r.away_team, 1 - r.p_cover)
+            spread["Cover"] = f"{side} covers {ps:.0%}"
+    note = ""
+    if r.p_vegas == r.p_vegas:
+        spread["Model vs Vegas"] = f"{(r.p_show - r.p_vegas) * 100:+.1f} pts on {r.home_team}"
+        if abs(r.p_show - r.p_vegas) >= 0.10:
             fav = r.home_team if r.p_vegas >= 0.5 else r.away_team
-            model_lower_on_fav = (r.p_vegas >= 0.5) == (r.p_show < r.p_vegas)
-            if model_lower_on_fav:
-                st.info(f"**The model is much lower on {fav} than Vegas.** In past games like this (2012–2025, Vegas "
+            if (r.p_vegas >= 0.5) == (r.p_show < r.p_vegas):
+                note = (f"<b>The model is much lower on {fav} than Vegas.</b> In past games like this (2012–2025, Vegas "
                         f"15+ points higher on the favorite), the favorite won 60% of the time: Vegas said 66%, the model "
                         f"46%. The truth usually lands between the two, closer to Vegas. The model deliberately regresses "
-                        f"teams toward average and can't see things like daily injury news.", icon=":material/info:")
+                        f"teams toward average and can't see things like daily injury news.")
             else:
-                st.info(f"**The model is much higher on {fav} than Vegas.** When the model likes the favorite more than "
-                        f"Vegas does, the favorite has won about as often as Vegas implied, so lean toward the Vegas number.",
-                        icon=":material/info:")
-        st.subheader("How the prediction is built")
-        st.caption(f"Starts at 50% (evenly matched teams at a neutral site). Each bar adds one factor, biggest first, "
-                   f"and the last bar is the model's probability for {r.home_team}. Hover a bar for the numbers behind it.")
-        if played_now.loc[r.name] and r.game_id in tracked.index:
-            st.caption("This game has been played: the breakdown uses the current model, so it may differ slightly "
-                       "from the probability recorded before kickoff.")
-        st.altair_chart(waterfall_chart(e, r.home_team, r.away_team), use_container_width=True)
+                note = (f"<b>The model is much higher on {fav} than Vegas.</b> When the model likes the favorite more than "
+                        f"Vegas does, the favorite has won about as often as Vegas implied, so lean toward the Vegas number.")
+    venue = venues.get(r.game_id, "") + (" · neutral site" if r.neutral else "")
+    with detail_col, st.container(key="detail"):
+        st.html(mc.panel_html(r, e, meta, venue, tags(r), spread, note, played))
+        st.markdown(mc.route_svg(waterfall(e), r.home_team, r.away_team, r.p_vegas, meta), unsafe_allow_html=True)
         f = pd.DataFrame(e["all_factors"])
         f = f[f.pct_points.abs() >= 0.001]
         f["effect"] = f.apply(lambda x: f"{x.favors} +{abs(x.pct_points) * 100:.1f}%", axis=1)
-        st.dataframe(f[["factor", "effect", "detail"]], hide_index=True, use_container_width=True)
-        m = missing[missing.game_id == detail] if missing is not None else pd.DataFrame()
+        st.dataframe(f[["factor", "effect", "detail"]], hide_index=True, use_container_width=True,
+                     column_config={"factor": "Factor", "effect": "Effect", "detail": "Detail"})
+        m = missing[missing.game_id == sel] if missing is not None else pd.DataFrame()
         if len(m):
-            st.markdown("**Missing players**")
+            st.html('<h3 class="fw-h3">Missing players</h3>')
             cols_m = ["team", "unit", "name", "position", "value", "missing_value"] if "unit" in m else \
                 ["team", "name", "position", "value", "missing_value"]
             st.dataframe(m.sort_values("missing_value", ascending=False)[cols_m], hide_index=True, use_container_width=True,
-                         column_config={"value": st.column_config.NumberColumn("usual share", format="percent",
+                         column_config={"team": "Team", "unit": "Unit", "name": "Name", "position": "Position",
+                                        "value": st.column_config.NumberColumn("Usual share", format="percent",
                                                                                help="offense: share of RB/WR/TE touches; "
                                                                                     "defense: share of playmaking"),
-                                        "missing_value": st.column_config.NumberColumn("missing share", format="percent")})
+                                        "missing_value": st.column_config.NumberColumn("Missing share", format="percent")})
+        if st.session_state.pop("scroll", False):
+            # After a tap, bring the panel's top into view when it sits above the viewport or the columns are stacked.
+            import streamlit.components.v1 as components
+            components.html(f"<script>/*{sel}*/const d=parent.document.querySelector('.st-key-detail');"
+                            "if(d&&(d.getBoundingClientRect().top<0||parent.innerWidth<=1180))d.scrollIntoView({block:'start'});"
+                            "</script>", height=0)
 
 # ================================================================ Overview
 elif page == "Overview":
@@ -812,10 +776,10 @@ elif page == "Team Analytics":
             y=alt.Y("team:N", sort="-x", title=None, axis=alt.Axis(labelOverlap=False)),
             x=alt.X("man_rate:Q", title="Share of dropbacks in man coverage", axis=alt.Axis(format="%")),
             color=alt.Color("group:N", legend=None, scale=alt.Scale(domain=["Selected team", "Other teams"],
-                                                                    range=[ORANGE, BLUE])),
+                                                                    range=[GOLD, GRAY])),
             tooltip=["team", alt.Tooltip("man_rate:Q", format=".1%", title="man"),
                      alt.Tooltip("dropbacks:Q", title="charted dropbacks")])
-        ref = alt.Chart(pd.DataFrame({"v": [league_man]})).mark_rule(color=GRAY, strokeDash=[4, 4]).encode(x="v:Q")
+        ref = alt.Chart(pd.DataFrame({"v": [league_man]})).mark_rule(color=REF, strokeDash=[4, 4]).encode(x="v:Q")
         st.caption(f"{season_c}: how often each defense plays man (the rest is zone). Dashed line = league average.")
         st.altair_chart(style(bars + ref, 20 * len(dfn) + 40), use_container_width=True)
 
@@ -831,7 +795,7 @@ elif page == "Team Analytics":
             xOffset=alt.XOffset("who:N", sort=[focus, "league"]),
             y=alt.Y("share:Q", title="Share of charted dropbacks", axis=alt.Axis(format="%")),
             color=alt.Color("who:N", legend=alt.Legend(title=None),
-                            scale=alt.Scale(domain=[focus, "league"], range=[ORANGE, GRAY])),
+                            scale=alt.Scale(domain=[focus, "league"], range=[GOLD, GRAY])),
             tooltip=["who", "coverage", alt.Tooltip("share:Q", format=".1%")]), 300), use_container_width=True)
 
         st.subheader("Offense vs. man and zone")
@@ -909,9 +873,12 @@ elif page == "Games":
         c2.metric(f"{r0.away_team} (away)", f"{1 - ph:.1%}")
         if r0.p_vegas == r0.p_vegas:
             c3.metric(f"Vegas: {r0.home_team}", f"{r0.p_vegas:.1%}")
-        st.caption("Starts at 50% (evenly matched teams at a neutral site). Each bar adds one factor, biggest first; "
-                   "the last bar is the model's probability for the home team. Hover for details.")
-        st.altair_chart(waterfall_chart(e, r0.home_team, r0.away_team), use_container_width=True)
+        st.caption(f"Starts at 50%: evenly matched teams at a neutral site. Each route is one factor, biggest first; "
+                   f"O marks a factor for {r0.home_team}, X one for {r0.away_team}. The dashed line is Vegas. "
+                   "Hover a route for the details.")
+        from matchup_card import route_svg
+        from src.explain import waterfall
+        st.markdown(route_svg(waterfall(e), r0.home_team, r0.away_team, r0.p_vegas, team_meta()), unsafe_allow_html=True)
         f = pd.DataFrame(e["all_factors"])
         f = f[f.pct_points.abs() >= 0.001]
         f["label"] = (f.pct_points * 100).map(lambda v: f"{v:+.1f}%")
@@ -924,15 +891,15 @@ elif page == "Games":
     if len(s):
         s["matchup"] = s.away_team + " @ " + s.home_team
         s["outcome"] = np.where(s.home_win == 1, "Home won", "Away won")
-        pts = alt.Chart(s).mark_circle(size=70, opacity=0.75, stroke="black", strokeWidth=1).encode(
+        pts = alt.Chart(s).mark_circle(size=70, opacity=0.75, stroke=theme.GROUND, strokeWidth=1).encode(
             x=alt.X("p_vegas:Q", title="Vegas home win probability", scale=alt.Scale(domain=[0, 1])),
             y=alt.Y("p_home:Q", title="Model home win probability", scale=alt.Scale(domain=[0, 1])),
-            color=alt.Color("outcome:N", scale=alt.Scale(domain=["Home won", "Away won"], range=[BLUE, ORANGE]),
+            color=alt.Color("outcome:N", scale=alt.Scale(domain=["Home won", "Away won"], range=[HOME, AWAY]),
                             legend=alt.Legend(title=None)),
             tooltip=["week", "matchup", alt.Tooltip("p_home:Q", format=".1%", title="model"),
                      alt.Tooltip("p_vegas:Q", format=".1%", title="Vegas"), "outcome"])
         diag = alt.Chart(pd.DataFrame({"x": [0, 1], "y": [0, 1]})).mark_line(
-            color=GRAY, strokeDash=[4, 4], strokeWidth=1).encode(x="x", y="y")
+            color=REF, strokeDash=[4, 4], strokeWidth=1).encode(x="x", y="y")
         st.altair_chart(style(diag + pts, 420), use_container_width=True)
     else:
         st.info("No out-of-sample predictions for this season yet.")
@@ -1002,14 +969,14 @@ elif page == "Situational":
             r = df.groupby(group, observed=True).agg(rate=("away_win", "mean"), games=("away_win", "size")).reset_index()
             r = r[r.games >= 30]
             r[group] = r[group].astype(str)
-            bars = alt.Chart(r).mark_bar(cornerRadiusEnd=4, color=BLUE).encode(
+            bars = alt.Chart(r).mark_bar(cornerRadiusEnd=4, color=BLUE, size=24).encode(  # columns 24px at most
                 x=alt.X(f"{group}:O", sort=[o for o in order if o in set(r[group])], title=x_title,
                         axis=alt.Axis(labelAngle=0)),
                 y=alt.Y("rate:Q", title="Away team win rate", axis=alt.Axis(format="%")),
                 tooltip=[alt.Tooltip(f"{group}:N", title=x_title),
                          alt.Tooltip("rate:Q", format=".1%", title="away win rate"), "games"])
             ref = alt.Chart(pd.DataFrame({"y": [overall]})).mark_rule(
-                color=GRAY, strokeDash=[4, 4], strokeWidth=1).encode(y="y:Q")
+                color=REF, strokeDash=[4, 4], strokeWidth=1).encode(y="y:Q")
             st.markdown(f"**{title}**")
             st.altair_chart(style(bars + ref, 280), use_container_width=True)
 
@@ -1129,12 +1096,12 @@ elif page == "Matchups":
                 scale=alt.Scale(zero=False, padding=20)),
         tooltip=["team", alt.Tooltip("allowed:Q", format=".1%", title="offense hit/sacked"),
                  alt.Tooltip("generated:Q", format=".1%", title="defense hit/sack"), "games"])
-    dots = base.mark_circle(size=90, stroke="black", strokeWidth=1).encode(
+    dots = base.mark_circle(size=90, stroke=theme.GROUND, strokeWidth=1.5).encode(
         color=alt.Color("group:N", legend=None,
-                        scale=alt.Scale(domain=[focus, "Other teams"], range=[ORANGE, BLUE])))
+                        scale=alt.Scale(domain=[focus, "Other teams"], range=[GOLD, GRAY])))
     names = base.mark_text(dy=-10, fontSize=10, color=TEXT_2).encode(text="team:N")
-    avg_x = alt.Chart(pd.DataFrame({"v": [pr.allowed.mean()]})).mark_rule(color=GRAY, strokeDash=[4, 4]).encode(x="v:Q")
-    avg_y = alt.Chart(pd.DataFrame({"v": [pr.generated.mean()]})).mark_rule(color=GRAY, strokeDash=[4, 4]).encode(y="v:Q")
+    avg_x = alt.Chart(pd.DataFrame({"v": [pr.allowed.mean()]})).mark_rule(color=REF, strokeDash=[4, 4]).encode(x="v:Q")
+    avg_y = alt.Chart(pd.DataFrame({"v": [pr.generated.mean()]})).mark_rule(color=REF, strokeDash=[4, 4]).encode(y="v:Q")
     st.altair_chart(style(avg_x + avg_y + dots + names, 460), use_container_width=True)
     if focus != "None":
         trend = (tg[tg.team == focus].groupby("season")
@@ -1171,7 +1138,7 @@ elif page == "Matchups":
         tooltip=["team", alt.Tooltip("gap:Q", format="+.3f", title="blitz gap"),
                  alt.Tooltip("blitz_rate_faced:Q", format=".0%", title="blitzed on"),
                  alt.Tooltip("n_b:Q", title="blitzed dropbacks")])
-    ref = alt.Chart(pd.DataFrame({"v": [league_gap]})).mark_rule(color=GRAY, strokeDash=[4, 4]).encode(x="v:Q")
+    ref = alt.Chart(pd.DataFrame({"v": [league_gap]})).mark_rule(color=REF, strokeDash=[4, 4]).encode(x="v:Q")
     st.altair_chart(style(bars + ref, 20 * len(bt) + 40), use_container_width=True)
     st.caption(f"League-average drop when blitzed: {league_gap:+.3f} EPA/dropback. "
                "Red = worse than the league-average drop; blue = better.")
@@ -1389,7 +1356,7 @@ elif page == "Prime Time":
                 shade="datum.lit ? datum.Result : 'Grayed out'").mark_point(filled=True).encode(
                 x=alt.X("bets_pct:Q", title="% of bets", scale=alt.Scale(domain=[0, 100])),
                 y=alt.Y("handle_pct:Q", title="% of money", scale=alt.Scale(domain=[0, 100])),
-                color=alt.Color("shade:N", scale=alt.Scale(domain=shades, range=[BLUE, RED, GRAY, "#4a4a50"][:len(shades)]),
+                color=alt.Color("shade:N", scale=alt.Scale(domain=shades, range=[BLUE, RED, GRAY, theme.AXIS][:len(shades)]),
                                 legend=alt.Legend(title=None)),
                 shape=alt.Shape("Market:N", scale=alt.Scale(domain=["Moneyline", "Spread", "Total"]),
                                 legend=alt.Legend(title=None, symbolFillColor=TEXT_2, symbolStrokeColor=TEXT_2,
@@ -1400,7 +1367,7 @@ elif page == "Prime Time":
                 tooltip=["Season:N", alt.Tooltip("week:Q", title="Week"), "Slot:N", "Game:N", "Market:N", "Bet:N",
                          "line:Q", "odds:Q", alt.Tooltip("handle_pct:Q", title="% money"),
                          alt.Tooltip("bets_pct:Q", title="% bets"), "Result:N"])
-            diag = alt.Chart().mark_line(color=GRAY, strokeDash=[4, 4], strokeWidth=1).encode(x="x:Q", y="y:Q")
+            diag = alt.Chart().mark_line(color=REF, strokeDash=[4, 4], strokeWidth=1).encode(x="x:Q", y="y:Q")
             spec = style(alt.layer(diag, dots), 360).to_dict()
             spec.pop("datasets", None)  # Altair's placeholder for charts built without data
             spec["layer"][0]["data"] = {"values": [{"x": 0, "y": 0}, {"x": 100, "y": 100}]}
@@ -1438,7 +1405,7 @@ elif page == "Model":
         with c1:
             st.markdown("**Calibration:** when we say 70%, does it happen 70% of the time?")
             diag = alt.Chart(pd.DataFrame({"x": [0, 1], "y": [0, 1]})).mark_line(
-                color=GRAY, strokeDash=[4, 4], strokeWidth=1).encode(x="x", y="y")
+                color=REF, strokeDash=[4, 4], strokeWidth=1).encode(x="x", y="y")
             lines = alt.Chart(cal).mark_line(strokeWidth=2, point=alt.OverlayMarkDef(size=64, filled=True)).encode(
                 x=alt.X("predicted:Q", title="Predicted home win probability", scale=alt.Scale(domain=[0, 1])),
                 y=alt.Y("actual:Q", title="Actual home win rate", scale=alt.Scale(domain=[0, 1])),
@@ -1518,8 +1485,7 @@ elif page == "Model":
         except FileNotFoundError:
             st.info("Run `python -m src.train` to save the model.")
 
-st.sidebar.markdown("---")
-st.sidebar.caption("Every chart has a hover tooltip. Tables can be sorted and downloaded.")
+theme.footer()
 
 
 def _release_memory():

@@ -1,9 +1,19 @@
+# Fourth and Why. Colors and fonts match app/theme.py; src/pages.py copies this theme into the
+# GitHub Pages (stlite) build, so this file is the one place to change them.
 [theme]
 base = "dark"
-primaryColor = "#2a78d6"
-backgroundColor = "#000000"
-secondaryBackgroundColor = "#16161a"
-textColor = "#ffffff"
+primaryColor = "#e3a83c"
+backgroundColor = "#14110f"
+secondaryBackgroundColor = "#1d1915"
+textColor = "#f1e9dc"
+linkColor = "#f1e9dc"
+font = "Hanken Grotesk, system-ui, sans-serif"
+borderColor = "#2e2822"
+dataframeBorderColor = "#2e2822"
+dataframeHeaderBackgroundColor = "#181411"
+baseRadius = "6px"
+greenColor = "#0ca30c"
+redColor = "#e66767"
 
 [browser]
 gatherUsageStats = false
