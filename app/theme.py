@@ -215,6 +215,8 @@ html,body,.stApp{{background:var(--ground);color:var(--text)}}
   [class*="st-key-h_"] button::before{{width:14px;height:14px;border-width:2px;margin:0;grid-row:1}}
   [class*="st-key-h_"] button::after{{grid-column:2;font-size:12px}}
   [class*="st-key-h_"] button:hover{{border-color:var(--gold)!important}}
+  /* Streamlit 1.65 (stlite on Pages) wraps a button label in a centered flex div; 1.50 has none */
+  [class*="st-key-h_"] button>div,[class*="st-key-h_"] button>div>span{{justify-content:flex-start!important}}
   .st-key-mast{{flex-direction:column;align-items:flex-start;gap:6px}}.st-key-strip{{width:100%}}}}
 @media (max-width:860px){{
   :root{{--pad:18px}}
