@@ -304,10 +304,10 @@ def stadiums():
     return dict(zip(s.game_id, s.stadium))
 
 
-def _split_bar(pct, color):
+def _split_bar(pct, color, ink=None):
     if pd.isna(pct):
         return f'<span style="color:{GRAY}">–</span>'
-    return (f'<div style="display:flex;align-items:center;gap:6px">'
+    return (f'<div style="display:flex;align-items:center;gap:6px{f";color:{ink}" if ink else ""}">'
             f'<div style="flex:1;height:8px;background:{GRID};border-radius:4px;overflow:hidden">'
             f'<div style="width:{pct:.0f}%;height:100%;background:{color};border-radius:4px"></div></div>'
             f'<span style="width:34px;text-align:right;font-variant-numeric:tabular-nums">{pct:.0f}%</span></div>')
@@ -340,15 +340,15 @@ def splits_card(sides: pd.DataFrame, meta: dict, source: str) -> str:
     pending = (sides.result == "pending").all()
     when = (f"Action Network consensus splits" if pd.isna(r.hours_before)
             else f"{source} splits {r.hours_before:.1f} h before kickoff")
-    when = when if pending else "final · " + when
+    when = when if pending else "Final · " + when
     head = (f'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">'
             f'<div style="font-size:17px;font-weight:700">{logo(r.away_team)}{r.away_team} @ {r.home_team}'
             f'{logo(r.home_team)}</div>'
             f'<div style="text-align:right;font-size:13px;color:{TEXT_2}">Week {r.week} · {r.slot}<br>'
-            f'<span style="color:#fff;font-weight:600">{r.Score}</span></div></div>'
+            f'<span style="color:{theme.INK};font-weight:600">{r.Score}</span></div></div>'
             f'<div style="font-size:12px;color:{TEXT_2};margin-bottom:4px">{when}</div>')
     grid = "display:grid;grid-template-columns:minmax(96px,1.1fr) 1fr 1fr 18px;gap:10px;align-items:center"
-    small = f"font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:{TEXT_2}"
+    small = f"font-size:12px;color:{TEXT_2}"
     body = f'<div style="{grid};{small}"><span></span><span>Money</span><span>Bets</span><span></span></div>'
     for market, m in sides.groupby("market", sort=False):
         public = m[m.bets_pct == m.bets_pct.max()]
@@ -357,19 +357,21 @@ def splits_card(sides: pd.DataFrame, meta: dict, source: str) -> str:
             res = public.result.iloc[0]
             text = {"won": "Public won", "lost": "Vegas won", "push": "Push"}[res]
             tag = (f'<span style="padding:1px 8px;border-radius:999px;border:1px solid #3d362f;color:{theme.SOFT};'
-                   f'text-transform:none;letter-spacing:0">{text}</span>')
+                   f'">{text}</span>')
         body += (f'<div style="{small};display:flex;align-items:center;gap:8px;margin-top:8px">'
-                 f'<span>{market}</span>{tag}</div>')
+                 f'<span>{market.capitalize()}</span>{tag}</div>')
         for s in m.itertuples():
             odds = f"{s.odds:+.0f}".replace("-", "−") if pd.notna(s.odds) else ""
             label = s.Bet.replace(" ML", "")
             won, lost = s.result == "won", s.result == "lost"
             mark = {"won": mc_icon(True),
                     "push": f'<span style="color:{GRAY}">P</span>'}.get(s.result, "")
-            body += (f'<div style="{grid};font-size:14px;padding:2px 0;opacity:{0.55 if lost else 1}">'
-                     f'<span style="font-weight:{700 if won else 500}">{label} '
-                     f'<span style="color:{TEXT_2};font-size:12px">{odds}</span></span>'
-                     f'{_split_bar(s.handle_pct, BLUE)}{_split_bar(s.bets_pct, AQUA)}{mark}</div>')
+            ink = TEXT_2 if lost else None
+            body += (f'<div style="{grid};font-size:14px;padding:2px 0">'
+                     f'<span style="font-weight:{700 if won else 500}{f";color:{ink}" if lost else ""}">{label} '
+                     f'<span style="color:{theme.TICK if lost else TEXT_2};font-size:12px">{odds}</span></span>'
+                     f'{_split_bar(s.handle_pct, GRAY if lost else BLUE, ink)}'
+                     f'{_split_bar(s.bets_pct, GRAY if lost else AQUA, ink)}{mark}</div>')
     return (f'<div style="background:{theme.PANEL};border:1px solid {GRID};border-radius:6px;padding:14px 16px;'
             f'margin-bottom:16px">{head}{body}</div>')
 
