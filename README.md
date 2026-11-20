@@ -1,6 +1,6 @@
-# NFL Game Predictor Model
+# <img src="app/assets/mark.svg" width="34" height="34" alt=""> Fourth and Why
 
-[![Live dashboard](https://img.shields.io/badge/live-dashboard-2a78d6)](https://arinb44.github.io/NFLGamePredictorModel/)
+[![Live dashboard](https://img.shields.io/badge/live-dashboard-e3a83c)](https://arinb44.github.io/NFLGamePredictorModel/)
 
 **[Open the live dashboard](https://arinb44.github.io/NFLGamePredictorModel/)**: this week's games with win probabilities, spreads and the reasons behind each prediction. It updates automatically three times a week. The first visit takes 10–30 seconds to load.
 
