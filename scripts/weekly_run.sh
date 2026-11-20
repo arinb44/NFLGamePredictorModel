@@ -51,6 +51,12 @@ if git diff --cached --quiet; then
   echo "No changes to commit."
 else
   git commit -q -m "Pregame predictions $(date '+%Y-%m-%d %H:%M %Z')"
-  GIT_TERMINAL_PROMPT=0 git -c credential.helper= -c 'credential.helper=!gh auth git-credential' push -q origin main \
-    && echo "Pushed $(git log --oneline -1)" || echo "Push failed; commit kept locally."
+  # main also moves on GitHub (merged pull requests), so replay this commit on top of it before pushing.
+  if GIT_TERMINAL_PROMPT=0 git -c credential.helper= -c 'credential.helper=!gh auth git-credential' pull -q --rebase --autostash origin main; then
+    GIT_TERMINAL_PROMPT=0 git -c credential.helper= -c 'credential.helper=!gh auth git-credential' push -q origin main \
+      && echo "Pushed $(git log --oneline -1)" || echo "Push failed; commit kept locally."
+  else
+    git rebase --abort 2>/dev/null
+    echo "Pull failed; commit kept locally."
+  fi
 fi
