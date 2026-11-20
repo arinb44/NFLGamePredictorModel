@@ -100,26 +100,42 @@ theme.inject_css()
 
 
 def line_chart(df, x, y, color=None, color_scale=None, tooltip=None, y_title=None, x_title=None,
-               zero=False, height=320, detail=None, x_format=None):
+               zero=False, height=320, detail=None, x_format=None, y_format=None, x_values=None, end_labels=None):
     """Lines (2px) with a vertical crosshair and tooltip on the nearest x.
-    `detail` breaks the line into segments (e.g. one per season)."""
+    `detail` breaks the line into segments (e.g. one per season). `end_labels`: rows with the x and y
+    fields, `label` and `align` ("left" = right of the point, "right" = left of it), drawn as direct labels."""
+    x_axis = (alt.Axis(format=x_format, tickCount="year") if x_format
+              else alt.Axis(labelAngle=0, values=x_values) if x_values else alt.Axis(labelAngle=0))
     base = alt.Chart(df).encode(
-        x=alt.X(x, title=x_title, axis=alt.Axis(format=x_format, tickCount="year") if x_format else alt.Axis(labelAngle=0)),
-        y=alt.Y(y, title=y_title, scale=alt.Scale(zero=zero)),
+        x=alt.X(x, title=x_title, axis=x_axis),
+        y=alt.Y(y, title=y_title, scale=alt.Scale(zero=zero), axis=alt.Axis(format=y_format) if y_format else alt.Axis()),
     )
     enc = {}
     if color:
         enc["color"] = alt.Color(color, scale=color_scale, legend=alt.Legend(title=None))
+    one = {} if color else {"color": BLUE}  # a single series is the Model blue, never Streamlit's default
     line_enc = dict(enc, detail=detail) if detail else enc
-    lines = base.mark_line(strokeWidth=2).encode(**line_enc)
+    lines = base.mark_line(strokeWidth=2, **one).encode(**line_enc)
     nearest = alt.selection_point(nearest=True, on="pointerover", fields=[x.split(":")[0]], empty=False)
     points = base.mark_point(size=70, filled=True, opacity=0).encode(
         tooltip=tooltip or [x, y], **enc).add_params(nearest)
     rule = base.mark_rule(color=GRAY, strokeWidth=1).encode(
         opacity=alt.condition(nearest, alt.value(0.6), alt.value(0))).transform_filter(nearest)
-    dots = base.mark_point(size=60, filled=True).encode(
+    dots = base.mark_point(size=60, filled=True, **one).encode(
         opacity=alt.condition(nearest, alt.value(1), alt.value(0)), **enc)
-    return style(alt.layer(lines, rule, dots, points), height)
+    layers = [lines, rule, dots, points]
+    if end_labels is not None:
+        lab = pd.DataFrame(end_labels)
+        for align, g in lab.groupby("align"):
+            ends = alt.Chart(g).encode(x=alt.X(x), y=alt.Y(y))
+            layers += [ends.mark_point(size=50, filled=True, opacity=1, **one).encode(**enc),
+                       ends.mark_text(align=align, dx=10 if align == "left" else -10, dy=-10, fontSize=12,
+                                      color=theme.SOFT).encode(text="label:N")]
+    chart = style(alt.layer(*layers), height)
+    xf = x.split(":")[0]
+    if end_labels is not None and (lab[lab["align"] == "left"][xf] == df[xf].max()).any():
+        chart = chart.properties(padding={"left": 5, "top": 5, "bottom": 5, "right": 90})  # room for labels past the last x
+    return chart
 
 
 def bar_chart(df, x, y, tooltip, color=BLUE, horizontal=False, y_title=None, x_title=None,
@@ -531,7 +547,7 @@ if page == "This Week":
     with st.container(key="tw"):
         list_col, detail_col = st.columns([5, 8])
     with list_col:
-        st.html(f'<h3 class="fw-lh">All {week_name(week)} games</h3>')
+        st.html(f'<h2 class="fw-lh">All {week_name(week)} games</h2>')
         with st.container(key="games"):
             for i, r in wg.iterrows():
                 e = exps[r.game_id]
@@ -573,13 +589,17 @@ if page == "This Week":
         f = f[f.pct_points.abs() >= 0.001]
         f["effect"] = f.apply(lambda x: f"{x.favors} +{abs(x.pct_points) * 100:.1f}%", axis=1)
         st.dataframe(f[["factor", "effect", "detail"]], hide_index=True, use_container_width=True,
-                     column_config={"factor": "Factor", "effect": "Effect", "detail": "Detail"})
+                     height=35 * (len(f) + 1) + 3,
+                     column_config={"factor": st.column_config.TextColumn("Factor", width=160),
+                                    "effect": st.column_config.TextColumn("Effect", width=92),
+                                    "detail": st.column_config.TextColumn("Detail", width=550)})
         m = missing[missing.game_id == sel] if missing is not None else pd.DataFrame()
         if len(m):
             st.html('<h3 class="fw-h3">Missing players</h3>')
             cols_m = ["team", "unit", "name", "position", "value", "missing_value"] if "unit" in m else \
                 ["team", "name", "position", "value", "missing_value"]
             st.dataframe(m.sort_values("missing_value", ascending=False)[cols_m], hide_index=True, use_container_width=True,
+                         height=35 * (len(m) + 1) + 3,
                          column_config={"team": "Team", "unit": "Unit", "name": "Name", "position": "Position",
                                         "value": st.column_config.NumberColumn("Usual share", format="percent",
                                                                                help="offense: share of RB/WR/TE touches; "
@@ -600,51 +620,65 @@ elif page == "Overview":
     if results is not None:
         hold = results[results.period.str.startswith("holdout")].set_index("index")
         c[2].metric("Model accuracy", f"{hold.loc['logistic', 'accuracy']:.1%}",
-                    f"{hold.loc['logistic', 'accuracy'] - hold.loc['elo', 'accuracy']:+.1%} vs Elo",
+                    f"{(hold.loc['logistic', 'accuracy'] - hold.loc['elo', 'accuracy']) * 100:+.1f} pts vs Elo, holdout 2019–25",
                     help="Holdout seasons 2019–2025, never used for any modeling choice.")
         c[3].metric("Vegas accuracy", f"{hold.loc['vegas', 'accuracy']:.1%}",
                     help="Vegas closing moneyline, same holdout games.")
 
-    st.subheader("Home-field advantage is shrinking")
+    st.header("Home-field advantage is shrinking")
     st.caption("Share of regular-season games won by the home team (neutral sites excluded).")
     reg = played[(played.game_type == "REG") & ~played.neutral]
     complete = reg.groupby("season").size()
     reg = reg[reg.season.isin(complete[complete >= 200].index)]  # skip the season in progress
     hfa = reg.groupby("season").home_win.mean().rename("home_win_rate").reset_index()
+    yrs = list(hfa.season)
+    first, last = hfa.iloc[0], hfa.iloc[-1]
     st.altair_chart(line_chart(hfa, "season:O", "home_win_rate:Q", y_title="Home win rate",
-                               x_title="Season",
+                               x_title="Season", y_format="%",
+                               x_values=[y for y in yrs if (y - yrs[0]) % 4 == 0 or y == yrs[-1]],
+                               end_labels=[{"season": int(first.season), "home_win_rate": first.home_win_rate,
+                                            "label": f"{int(first.season)}: {first.home_win_rate:.1%}", "align": "left"},
+                                           {"season": int(last.season), "home_win_rate": last.home_win_rate,
+                                            "label": f"{int(last.season)}: {last.home_win_rate:.1%}", "align": "right"}],
                                tooltip=[alt.Tooltip("season:O"),
                                         alt.Tooltip("home_win_rate:Q", format=".1%", title="Home win rate")]),
                     use_container_width=True)
 
     if results is not None:
-        st.subheader("Model vs. benchmarks")
+        st.header("Model vs. benchmarks")
         st.caption("Walk-forward: every season is predicted by a model trained only on earlier seasons. "
                    "Holdout seasons were never used to make any modeling choice.")
         r = results.rename(columns={"index": "model"})
         names = {"logistic": "Model", "vegas": "Vegas", "elo": "Elo",
                  "random_forest": "Random forest", "gradient_boosting": "Gradient boosting"}
         r["model"] = r.model.map(names)
-        order = ["Model", "Random forest", "Gradient boosting", "Vegas", "Elo"]
+        r["phase"] = np.where(r.period.str.startswith("holdout"), "Holdout", "Tuning")
+        order = ["Model", "Vegas", "Elo", "Random forest", "Gradient boosting"]
         st.caption("**Model** is the final logistic regression. Random forest and gradient boosting "
                    "(gray) were tuned the same way but did worse on the tuning seasons.")
-        r["period"] = r.period.str.replace("holdout", "Holdout").str.replace("tuning", "Tuning")
-        for metric, title, fmt in [("accuracy", "Accuracy (higher is better)", ".1%"),
-                                   ("log_loss", "Log loss (lower is better)", ".3f")]:
-            base = alt.Chart(r).encode(
-                x=alt.X(f"{metric}:Q", title=title, scale=alt.Scale(zero=False, nice=True, padding=40)),
-                y=alt.Y("period:N", title=None, sort="descending"),
-                yOffset=alt.YOffset("model:N", sort=order),
-                color=alt.Color("model:N", legend=alt.Legend(title=None, labelLimit=200),
-                                scale=alt.Scale(domain=order, range=[BLUE, GRAY, GRAY, ORANGE, AQUA])),
-                shape=alt.Shape("model:N", legend=alt.Legend(title=None, labelLimit=200),
-                                scale=alt.Scale(domain=order, range=["circle", "square", "triangle-up",
-                                                                     "circle", "circle"])),
-                tooltip=["period", "model", alt.Tooltip(f"{metric}:Q", format=fmt), "games"])
-            dots = base.mark_point(size=140, filled=True, opacity=1)
-            labels = base.mark_text(dx=12, align="left", fontSize=11).encode(
-                text=alt.Text(f"{metric}:Q", format=fmt), color=alt.value(TEXT_2))
-            st.altair_chart(style(dots + labels, 300), use_container_width=True)
+        st.html('<div class="fw-legend"><span><i class="dk"></i>Holdout 2019–25</span>'
+                '<span><i class="dk ring"></i>Tuning 2012–18</span></div>')
+        model_color = alt.Color("model:N", legend=None,
+                                scale=alt.Scale(domain=order, range=[BLUE, ORANGE, AQUA, GRAY, GRAY]))
+        for col, (metric, title, fmt, axis) in zip(st.columns(2), [
+                ("accuracy", "Accuracy (higher is better)", ".1%", alt.Axis(format="%", tickCount=3)),
+                ("log_loss", "Log loss (lower is better)", ".3f", alt.Axis(format=".2f", tickCount=4))]):
+            # one row per model: a rule from its tuning score (ring) to its holdout score (dot)
+            w = r.pivot_table(index="model", columns="phase", values=metric).reindex(order).reset_index()
+            w["right"] = w.Holdout >= w.Tuning  # the label sits on the holdout dot's outer side
+            w["label"] = w.Holdout.map(lambda v: format(v, fmt))
+            X = lambda f: alt.X(f"{f}:Q", title=title, axis=axis, scale=alt.Scale(zero=False, padding=28))
+            base = alt.Chart(w).encode(
+                y=alt.Y("model:N", sort=order, title=None, axis=alt.Axis(labelFontSize=13, labelLimit=200)),
+                tooltip=["model", alt.Tooltip("Tuning:Q", format=fmt, title="Tuning 2012–18"),
+                         alt.Tooltip("Holdout:Q", format=fmt, title="Holdout 2019–25")])
+            span = base.mark_rule(color=theme.AXIS, strokeWidth=2).encode(x=X("Tuning"), x2="Holdout:Q")
+            tune = base.mark_point(size=70, filled=False, strokeWidth=2, opacity=1).encode(x=X("Tuning"), color=model_color)
+            hold = base.mark_point(size=90, filled=True, opacity=1).encode(x=X("Holdout"), color=model_color)
+            labels = [base.mark_text(align=a, dx=dx, fontSize=12, color=theme.SOFT).encode(
+                x=X("Holdout"), text="label:N").transform_filter(f) for a, dx, f in
+                [("left", 10, "datum.right"), ("right", -10, "!datum.right")]]
+            col.altair_chart(style(alt.layer(span, tune, hold, *labels), 40 * len(order)), use_container_width=True)
 
 # ================================================================ Teams
 elif page == "Teams":
@@ -655,7 +689,7 @@ elif page == "Teams":
     seasons = f2.slider("Seasons", lo, hi, (max(lo, hi - 4), hi))
     t = teams[(teams.team == team) & teams.season.between(*seasons) & (teams.result != "")]
 
-    st.subheader(f"{team} pregame strength over time")
+    st.header(f"{team} pregame strength over time")
     st.caption("Values the model saw *before* each game.")
     elo = t[["gameday", "elo_pre", "opponent", "result", "season", "week"]].dropna(subset=["elo_pre"])
     st.altair_chart(line_chart(elo, "gameday:T", "elo_pre:Q", y_title="Elo rating", x_title=None,
@@ -682,7 +716,7 @@ elif page == "Teams":
                                tooltip=["gameday:T", "qb", "opponent", alt.Tooltip("qb_epa:Q", format=".3f")],
                                y_title="QB EPA per play"), use_container_width=True)
 
-    st.subheader("Game log")
+    st.header("Game log")
     log = t.merge(pred[["game_id", "p_home", "p_vegas"]], on="game_id", how="left")
     home_side = log.venue != "Away"
     log["model_win_prob"] = np.where(home_side, log.p_home, 1 - log.p_home)
@@ -711,14 +745,16 @@ elif page == "Team Analytics":
     ts = tg[tg.season == season_a]
 
     # ---- 3rd downs
-    st.subheader("3rd downs")
+    st.header("3rd downs")
     d3 = ts.groupby("team")[["off_third_conv", "off_third_att", "def_third_conv", "def_third_att"]].sum().reset_index()
     d3["off_rate"] = d3.off_third_conv / d3.off_third_att
     d3["def_rate"] = d3.def_third_conv / d3.def_third_att
     r = d3.set_index("team").loc[focus]
     m1, m2, m3 = st.columns(3)
-    m1.metric(f"{focus} offense converts", f"{r.off_rate:.1%}", f"{(r.off_rate - d3.off_rate.mean()) * 100:+.1f} pts vs league")
-    m2.metric(f"{focus} defense allows", f"{r.def_rate:.1%}", f"{(r.def_rate - d3.def_rate.mean()) * 100:+.1f} pts vs league",
+    m1.metric(f"{focus} offense converts", f"{r.off_rate:.1%}",
+              f"{(r.off_rate - d3.off_rate.mean()) * 100:+.1f} pts vs league".replace("-", "−"))
+    m2.metric(f"{focus} defense allows", f"{r.def_rate:.1%}",
+              f"{(r.def_rate - d3.def_rate.mean()) * 100:+.1f} pts vs league".replace("-", "−"),
               delta_color="inverse")
     m3.metric("Offense rank", f"{int(d3.off_rate.rank(ascending=False)[d3.team == focus].iloc[0])} of 32")
     st.caption("Right = offense converts more. Up = defense allows fewer (axis flipped so up is better). "
@@ -731,7 +767,7 @@ elif page == "Team Analytics":
         use_container_width=True)
 
     # ---- 4th downs
-    st.subheader("4th downs")
+    st.header("4th downs")
     d4 = ts.groupby("team").agg(att=("off_fourth_att", "sum"), conv=("off_fourth_conv", "sum"),
                                 games=("game_id", "size")).reset_index()
     d4["att_per_game"] = d4.att / d4.games
@@ -751,7 +787,7 @@ elif page == "Team Analytics":
         use_container_width=True)
 
     # ---- Coverage
-    st.subheader("Coverage: man vs. zone")
+    st.header("Coverage: man vs. zone")
     cov_path = PROCESSED_DIR / "coverage_defense.parquet"
     cov = load_coverage(cov_path.stat().st_mtime if cov_path.exists() else 0)
     if cov is None:
@@ -789,7 +825,7 @@ elif page == "Team Analytics":
         mix[focus] = types[types.team == focus].set_index("coverage").share
         mix = mix.fillna(0).reset_index().melt(id_vars="coverage", var_name="who", value_name="share")
         order = list((lg / lg.sum()).sort_values(ascending=False).index)
-        st.markdown(f"**{focus} coverage mix vs. league ({season_c})**")
+        st.subheader(f"{focus} coverage mix vs. league ({season_c})")
         st.altair_chart(style(alt.Chart(mix).mark_bar(cornerRadiusEnd=3).encode(
             x=alt.X("coverage:N", sort=order, title=None, axis=alt.Axis(labelAngle=0)),
             xOffset=alt.XOffset("who:N", sort=[focus, "league"]),
@@ -798,7 +834,7 @@ elif page == "Team Analytics":
                             scale=alt.Scale(domain=[focus, "league"], range=[GOLD, GRAY])),
             tooltip=["who", "coverage", alt.Tooltip("share:Q", format=".1%")]), 300), use_container_width=True)
 
-        st.subheader("Offense vs. man and zone")
+        st.header("Offense vs. man and zone")
         off = cov["offense"][cov["offense"].season == season_c].dropna()
         st.caption(f"{season_c}: EPA per dropback against each coverage. Above the diagonal = better against zone; "
                    "below = better against man. Dashed lines are league averages.")
@@ -862,7 +898,7 @@ elif page == "Games":
                                 "p_elo": st.column_config.NumberColumn("Elo: home win %", format="percent")})
 
     if bundle is not None and len(g):
-        st.subheader("Why? Factors behind a prediction")
+        st.header("Why? Factors behind a prediction")
         pick = st.selectbox("Game", list(g.matchup))
         row = g[g.matchup == pick]
         e = explain(bundle, row.reset_index(drop=True), missing, top=20)[0]
@@ -886,7 +922,7 @@ elif page == "Games":
         st.dataframe(f[["factor", "label", "direction", "detail"]].rename(columns={"label": "effect"}),
                      hide_index=True, use_container_width=True)
 
-    st.subheader(f"{season}: model vs. Vegas")
+    st.header(f"{season}: model vs. Vegas")
     s = pred[(pred.season == season) & pred.p_home.notna() & pred.p_vegas.notna()].copy()
     if len(s):
         s["matchup"] = s.away_team + " @ " + s.home_team
@@ -927,7 +963,7 @@ elif page == "Players":
             st.caption("**Role** = share of the team's RB/WR/TE targets + carries he usually gets. "
                        "**Missing share** = role × how regularly he had been playing.")
         if team == "All teams":
-            st.subheader(f"Biggest absences of {season}")
+            st.header(f"Biggest absences of {season}")
             top = sm.sort_values("missing_value", ascending=False).head(20)
             top["label"] = top.name + " (" + top.team + ", wk " + top.week.astype(str) + ")"
             st.altair_chart(bar_chart(top, "missing_value:Q", "label:N", horizontal=True,
@@ -942,7 +978,7 @@ elif page == "Players":
             weekly = tm.groupby("week").missing_value.sum().reindex(
                 sorted(games[(games.season == season) & ((games.home_team == team) | (games.away_team == team))]
                        .week.unique()), fill_value=0).rename("missing").reset_index()
-            st.subheader(f"{team} {season}: share of {'defensive playmaking' if unit == 'Defense' else 'skill-player touches'} missing each week")
+            st.header(f"{team} {season}: share of {'defensive playmaking' if unit == 'Defense' else 'skill-player touches'} missing each week")
             st.altair_chart(bar_chart(weekly, "week:O", "missing:Q", x_title="Week", y_title="Missing share",
                                       tooltip=["week", alt.Tooltip("missing:Q", format=".1%")]),
                             use_container_width=True)
@@ -982,7 +1018,7 @@ elif page == "Situational":
 
         st.caption(f"Dashed line = all road teams ({overall:.1%}). Bars with fewer than 30 games are hidden. "
                    "These are raw rates: they don't control for team strength, which the model does.")
-        st.subheader("Travel and body clock")
+        st.header("Travel and body clock")
         st.caption("A 1 PM Eastern kickoff is 10 AM on a West Coast team's body clock.")
         c1, c2 = st.columns(2)
         p["body_clock"] = pd.cut(p.away_early_clock, [-0.1, 0.01, 1.5, 2.5, 10],
@@ -993,7 +1029,7 @@ elif page == "Situational":
         with c2:
             rate_bars(p[~p.neutral], "tz", "Away team, by time zones traveled (+ = east)", "Time-zone shift")
 
-        st.subheader("Weather")
+        st.header("Weather")
         c1, c2 = st.columns(2)
         out = p[p.indoor == 0].copy()
         out["cold"] = pd.cut(out.away_cold_shock, [-0.1, 5, 15, 25, 100],
@@ -1011,7 +1047,7 @@ elif page == "Situational":
                                       height=280, tooltip=["wind", alt.Tooltip("points:Q", format=".1f"), "games"]),
                             use_container_width=True)
 
-        st.subheader("Fatigue")
+        st.header("Fatigue")
         c1, c2 = st.columns(2)
         p["def_load"] = pd.cut(p.away_prev_def_snaps, [0, 55, 62, 70, 200],
                                labels=["<55", "55–62", "62–70", "70+"])
@@ -1027,7 +1063,7 @@ elif page == "Matchups":
                "Only *QB in bad weather* is in the model; the others are shown for context (see README).")
 
     # ---- QB bad-weather sensitivity
-    st.subheader("QBs in bad weather")
+    st.header("QBs in bad weather")
     st.caption("EPA per dropback in bad weather (15+ mph wind, rain/snow, or 32°F or colder) compared with the same QB's "
                "normal games, beyond the league-wide drop. Shrunk toward 0 until a QB has ~2,500 bad-weather dropbacks, "
                "so short careers sit near 0. Values are what the model used for each QB's latest start.")
@@ -1052,7 +1088,7 @@ elif page == "Matchups":
                                             range=[BLUE, RED]))), use_container_width=True)
 
     # ---- Prime time & clutch (informational)
-    st.subheader("QBs in prime time and in the clutch")
+    st.header("QBs in prime time and in the clutch")
     st.caption("**Not used by the model.** Prime-time edges don't carry over from one set of seasons to the next "
                "(correlation −0.09), and clutch edges carry over only a little (+0.28), too little to improve "
                "predictions. Records are shown against the wins the model expected, because night games are often "
@@ -1075,7 +1111,7 @@ elif page == "Matchups":
                    "Expected wins use the model's pregame probabilities (2012 onward).")
 
     # ---- Pressure map
-    st.subheader("Pressure: protection vs. pass rush")
+    st.header("Pressure: protection vs. pass rush")
     st.caption("Share of dropbacks where the QB was hit or sacked. Right = offense gets hit more (worse protection). "
                "Up = defense hits the QB more (better pass rush). Dashed lines are league averages.")
     tg = team_games
@@ -1116,7 +1152,7 @@ elif page == "Matchups":
                         use_container_width=True)
 
     # ---- Blitz vulnerability
-    st.subheader("Offense vs. the blitz (FTN charting, 2022+)")
+    st.header("Offense vs. the blitz (FTN charting, 2022+)")
     st.caption("EPA per dropback when blitzed minus when not blitzed, for the season. The dashed line is the league "
                "average; left of it = hurt by the blitz more than most offenses, right = handles it better. "
                "One season is a small sample, so expect big swings year to year.")
@@ -1144,7 +1180,7 @@ elif page == "Matchups":
                "Red = worse than the league-average drop; blue = better.")
 
     # ---- Live test over time
-    st.subheader("Live 2026 test: week by week")
+    st.header("Live 2026 test: week by week")
     from src.track import _load as load_tracking
     tr = load_tracking()
     tr = tr[tr.season == tr.season.max()].merge(played[["game_id", "home_win"]], on="game_id") if len(tr) else tr
@@ -1200,7 +1236,7 @@ elif page == "Prime Time":
         done = g[g.result != "pending"] if len(g) else g
 
         # ---- public vs. Vegas
-        st.subheader("Public vs. Vegas")
+        st.header("Public vs. Vegas")
         if done.empty:
             st.info("No graded games yet for this selection. Splits are graded once the final score is in.")
         else:
@@ -1278,7 +1314,7 @@ elif page == "Prime Time":
         rows = rows.sort_values(["kickoff", "market_order", "handle_pct"], ascending=[False, True, False])
         tracked, untracked = rows[rows.market.notna()], rows[rows.market.isna()]
 
-        st.subheader("Every prime-time game")
+        st.header("Every prime-time game")
         if season_pt == "All seasons":
             st.caption("Pick a season above to see each game.")
         else:
@@ -1325,7 +1361,7 @@ elif page == "Prime Time":
 
         # ---- does the bigger-wager side win more?
         if not done.empty:
-            st.subheader("Money share vs. bet share")
+            st.header("Money share vs. bet share")
             pts = majority_record(done, "handle_pct").copy()
             pts["Game"] = pts.away_team + " @ " + pts.home_team
             pts["Market"] = pts.market.str.title()
@@ -1403,12 +1439,15 @@ elif page == "Model":
             predicted=("p", "mean"), actual=("home_win", "mean"), games=("p", "size")).reset_index()
         cal = cal[cal.games >= 20].drop(columns="bin")
         with c1:
-            st.markdown("**Calibration:** when we say 70%, does it happen 70% of the time?")
+            st.header("Calibration")
+            st.caption("When the model says 70%, does it happen 70% of the time? On the dashed line, yes.")
             diag = alt.Chart(pd.DataFrame({"x": [0, 1], "y": [0, 1]})).mark_line(
                 color=REF, strokeDash=[4, 4], strokeWidth=1).encode(x="x", y="y")
             lines = alt.Chart(cal).mark_line(strokeWidth=2, point=alt.OverlayMarkDef(size=64, filled=True)).encode(
-                x=alt.X("predicted:Q", title="Predicted home win probability", scale=alt.Scale(domain=[0, 1])),
-                y=alt.Y("actual:Q", title="Actual home win rate", scale=alt.Scale(domain=[0, 1])),
+                x=alt.X("predicted:Q", title="Predicted home win probability", scale=alt.Scale(domain=[0, 1]),
+                        axis=alt.Axis(format="%", values=[0, .2, .4, .6, .8, 1])),
+                y=alt.Y("actual:Q", title="Actual home win rate", scale=alt.Scale(domain=[0, 1]),
+                        axis=alt.Axis(format="%", values=[0, .2, .4, .6, .8, 1])),
                 color=alt.Color("model:N", scale=MODEL_COLORS, legend=alt.Legend(title=None)),
                 tooltip=["model", alt.Tooltip("predicted:Q", format=".1%"), alt.Tooltip("actual:Q", format=".1%"), "games"])
             st.altair_chart(style(diag + lines, 380), use_container_width=True)
@@ -1418,22 +1457,27 @@ elif page == "Model":
             return -np.mean(g.home_win * np.log(p) + (1 - g.home_win) * np.log(1 - p))
         by_season = long.groupby(["model", "season"]).apply(ll).rename("log_loss").reset_index()
         with c2:
-            st.markdown("**Log loss by season** (lower is better)")
+            st.header("Log loss by season")
+            st.caption("Lower is better. Vegas sets the bar; Elo is the simple baseline.")
+            ends = by_season[by_season.season == by_season.season.max()].assign(align="left")
+            ends["label"] = ends.model + " " + ends.log_loss.map("{:.3f}".format)
             st.altair_chart(line_chart(by_season, "season:O", "log_loss:Q", color="model:N",
                                        color_scale=MODEL_COLORS, y_title="Log loss", x_title="Season",
+                                       end_labels=ends,
                                        tooltip=["season", "model", alt.Tooltip("log_loss:Q", format=".4f")],
                                        height=380), use_container_width=True)
 
-        st.subheader("Spreads: model vs. Vegas")
+        st.header("Spreads: model vs. Vegas")
         sp_rep_path = ROOT / "reports" / "spread_results.json"
         if sp_rep_path.exists():
             sr = json.loads(sp_rep_path.read_text())
             rows_s = []
             for period, v in sr.items():
-                row = {"period": period, "games": v["games"], "model error (RMSE)": round(v["rmse_model"], 2),
-                       "Vegas error (RMSE)": round(v["rmse_vegas"], 2)}
-                for key, label in [("ats_edge>0", "ATS: all games"), ("ats_edge>3.0", "ATS: 3+ pt disagreement"),
-                                   ("ats_edge>5.0", "ATS: 5+ pt disagreement")]:
+                row = {"Seasons": period.replace("tuning", "Tuning").replace("holdout", "Holdout"),
+                       "Games": v["games"], "Model error": round(v["rmse_model"], 2),
+                       "Vegas error": round(v["rmse_vegas"], 2)}
+                for key, label in [("ats_edge>0", "ATS, all games"), ("ats_edge>3.0", "ATS, 3+ pt gap"),
+                                   ("ats_edge>5.0", "ATS, 5+ pt gap")]:
                     w, l, pct = v[key]
                     row[label] = f"{w}-{l} ({pct:.1%})"
                 rows_s.append(row)
@@ -1448,7 +1492,7 @@ elif page == "Model":
             st.caption(f"Live {int(games.season.max())} record against the spread (recorded before kickoff): "
                        f"**{a['wins']}-{a['losses']}** ({a['wins'] / a['games']:.1%}).")
 
-        st.subheader("Live 2026 test: blitz vulnerability")
+        st.header("Live 2026 test: blitz vulnerability")
         st.caption("Rule set before any 2026 results: after the regular season, if the model *with* blitz "
                    "vulnerability has lower log loss on 2026 games, it joins the model. Predictions are recorded "
                    "before kickoff each week (weeks already played were backfilled as if live).")
@@ -1457,14 +1501,16 @@ elif page == "Model":
             sb = scoreboard().rename(index={"logistic": "Main model", "logistic_blitz": "Main + blitz", "vegas": "Vegas"})
             sb["games"] = sb.games.astype(int)
             st.dataframe(sb.style.format({"accuracy": "{:.1%}", "log_loss": "{:.4f}", "brier": "{:.4f}"}),
-                         use_container_width=True)
+                         use_container_width=True,
+                         column_config={"_index": "Model", "games": "Games", "accuracy": "Accuracy",
+                                        "log_loss": "Log loss", "brier": "Brier"})
             if sb.loc["Main model", "games"] < 100:
                 st.caption(f"Only {sb.loc['Main model', 'games']} games so far — far too few to judge. "
                            "Differences this early are mostly luck.")
         except Exception as exc:  # tracking file not created yet
             st.info(f"No live tracking yet ({exc}). Run `python -m src.predict`.")
 
-        st.subheader("What the model weighs most")
+        st.header("What the model weighs most")
         st.caption("Logistic regression weights on standardized features: change in log-odds of a home win "
                    "per one standard deviation. Blue favors the home team, red the away team.")
         try:
@@ -1476,12 +1522,21 @@ elif page == "Model":
             cdf["feature"] = cdf.feature.map(FEATURE_LABELS).fillna(cdf.feature)
             cdf["direction"] = np.where(cdf.weight >= 0, "Favors home team", "Favors away team")
             cdf = cdf.reindex(cdf.weight.abs().sort_values(ascending=False).index).head(25)
-            st.altair_chart(bar_chart(
-                cdf, "weight:Q", "feature:N", horizontal=True, x_title="Weight (log-odds per std dev)",
-                height=25 * 24, tooltip=["feature", alt.Tooltip("weight:Q", format=".3f")],
-                color_enc=alt.Color("direction:N", scale=alt.Scale(domain=["Favors home team", "Favors away team"],
-                                                                   range=[BLUE, RED]),
-                                    legend=alt.Legend(title=None))), use_container_width=True)
+            cdf["tip"] = cdf.weight.map(lambda v: f"{v:+.3f}".replace("-", "−"))
+            minus = "replace(datum.label, '-', '−')"
+            span = float(cdf.weight.abs().max()) * 1.2
+            wb = alt.Chart(cdf).encode(
+                y=alt.Y("feature:N", sort=list(cdf.feature), title=None, axis=alt.Axis(labelLimit=320, labelOverlap=False)),
+                x=alt.X("weight:Q", title="Weight (log-odds per std dev)", axis=alt.Axis(labelExpr=minus, tickCount=8),
+                        scale=alt.Scale(domain=[-span, span], nice=False)),
+                tooltip=["feature", alt.Tooltip("weight:Q", format=".3f")])
+            bars = wb.mark_bar(cornerRadiusEnd=4).encode(color=alt.Color(
+                "direction:N", scale=alt.Scale(domain=["Favors home team", "Favors away team"], range=[BLUE, RED]),
+                legend=alt.Legend(title=None)))
+            tips = [wb.mark_text(align=a, dx=dx, fontSize=12, color=theme.TICK).encode(text="tip:N").transform_filter(f)
+                    for a, dx, f in [("left", 6, "datum.weight >= 0"), ("right", -6, "datum.weight < 0")]]
+            zero = alt.Chart(pd.DataFrame({"x": [0]})).mark_rule(color=REF).encode(x=alt.datum(0))
+            st.altair_chart(style(alt.layer(bars, *tips, zero), 25 * 24), use_container_width=True)
         except FileNotFoundError:
             st.info("Run `python -m src.train` to save the model.")
 

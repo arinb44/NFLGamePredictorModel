@@ -92,9 +92,8 @@ html,body,.stApp{{background:var(--ground);color:var(--text)}}
 
 /* type */
 .stApp :is(h1,h2,h3,h4){{color:var(--text);padding:0}}
-.stApp [data-testid="stHeading"] h3,.stApp [data-testid="stMarkdownContainer"] h3{{
+.stApp [data-testid="stHeading"] :is(h2,h3),.stApp [data-testid="stMarkdownContainer"] h3{{
   font:500 27px/1.15 var(--serif)!important;letter-spacing:0;margin:30px 0 0}}
-.stApp [data-testid="stHeading"] h2{{font:500 34px/1.1 var(--serif)!important;letter-spacing:-.01em}}
 .stApp [data-testid="stCaptionContainer"]{{color:var(--soft);font-size:15px;line-height:1.5;max-width:80ch}}
 .stApp [data-testid="stCaptionContainer"] p{{font-size:15px;line-height:1.5}}
 .stApp [data-testid="stMarkdownContainer"] :is(p,li){{line-height:1.5}}
@@ -111,7 +110,12 @@ html,body,.stApp{{background:var(--ground);color:var(--text)}}
   border-top:1px solid var(--rule);border-bottom:1px solid var(--rule);padding:16px 0 18px}}
 [data-testid="stMetricLabel"] p{{color:var(--muted);font-size:13px!important}}
 [data-testid="stMetricValue"]{{font:600 34px/1.15 var(--sans)!important;font-variant-numeric:normal;color:var(--text)}}
-[data-testid="stMetricDelta"]{{font-size:13px}}
+[data-testid="stMetricDelta"]{{font-size:13px;color:var(--soft)!important;background:none!important;padding:0;margin-top:2px}}
+[data-testid="stMetricDelta"] svg{{display:none}}
+
+.fw-legend{{display:flex;flex-wrap:wrap;gap:6px 20px;color:var(--soft);font-size:13px;margin-top:4px}}
+.fw-legend span{{display:inline-flex;align-items:center;gap:7px}}
+.fw-legend .dk{{width:10px;height:10px;border-radius:50%;background:var(--soft)}}.fw-legend .dk.ring{{background:none;border:2px solid var(--soft)}}
 
 /* controls */
 .stApp [data-testid="stWidgetLabel"] p{{color:var(--muted);font-size:13px}}
@@ -148,6 +152,7 @@ html,body,.stApp{{background:var(--ground);color:var(--text)}}
 
 /* masthead: the wordmark and the formation strip */
 .st-key-mast{{flex-direction:row;align-items:center;gap:36px;margin:0 calc(-1*var(--pad)) 0;padding:12px var(--pad) 8px;
+  width:calc(100% + 2*var(--pad))!important;max-width:none;
   background:var(--rail);border-bottom:1px solid var(--rule)}}
 .st-key-mast>*{{width:auto!important}}.st-key-mast>:not(.st-key-mark){{flex:1;min-width:0}}
 .st-key-mark button,[class*="st-key-s_"] button,[class*="st-key-h_"] button{{background:none!important;border:0!important;

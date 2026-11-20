@@ -163,7 +163,8 @@ def panel_html(r, e: dict, meta: dict, venue: str, tags: list, spread: dict, not
         vfav, vp = (h, r.p_vegas) if r.p_vegas >= 0.5 else (a, 1 - r.p_vegas)
         left = (1 - r.p_vegas) * 100
         vg = (f'<span class="vg" style="left:{left:.1f}%"></span>'
-              f'<span class="vgl" style="left:{min(max(left, 9), 91):.1f}%">Vegas {vfav} {vp * 100:.1f}</span>')
+              f'<span class="vgl" style="left:{left:.1f}%;transform:{"none" if left < 20 else "translateX(-100%)" if left > 80 else "translateX(-50%)"}">'
+              f'Vegas {vfav} {vp * 100:.1f}</span>')
         aria += f", Vegas {vfav} {vp * 100:.1f}%"
     out.append(f'<div class="fw-split-wrap"><div class="fw-split" role="img" aria-label="{aria}">'
                f'{seg(a, pa, ca, True)}{seg(h, ph, ch, False)}{vg}</div></div>')
