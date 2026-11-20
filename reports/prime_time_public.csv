@@ -1047,3 +1047,9 @@ captured_at,game_id,market,side,line,odds,handle_pct,bets_pct,source
 2026-11-17T14:05:04Z,2026_10_LAC_BAL,spread,BAL,-4.5,-109,54,49,action_network
 2026-11-17T14:05:04Z,2026_10_LAC_BAL,total,over,39.5,-111,72,68,action_network
 2026-11-17T14:05:04Z,2026_10_LAC_BAL,total,under,39.5,-111,28,32,action_network
+2026-11-20T14:02:55Z,2026_11_IND_HOU,moneyline,HOU,,-750,71,91,action_network
+2026-11-20T14:02:55Z,2026_11_IND_HOU,moneyline,IND,,550,29,9,action_network
+2026-11-20T14:02:55Z,2026_11_IND_HOU,spread,IND,12.5,-109,40,46,action_network
+2026-11-20T14:02:55Z,2026_11_IND_HOU,spread,HOU,-12.5,-109,60,54,action_network
+2026-11-20T14:02:55Z,2026_11_IND_HOU,total,over,44.5,-107,72,75,action_network
+2026-11-20T14:02:55Z,2026_11_IND_HOU,total,under,44.5,-112,28,25,action_network
