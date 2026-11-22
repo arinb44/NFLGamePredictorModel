@@ -1,14 +1,14 @@
 game_id,away,home,p_home,p_vegas,model_spread,vegas_spread,factor_1,factor_2,factor_3
-2026_11_IND_HOU,IND,HOU,0.6722,0.8467,HOU -5,HOU -12.5,HOU +7.0% Home field,HOU +5.0% Defense,IND +5.0% Missing skill players
-2026_11_ARI_KC,ARI,KC,0.9288,0.8967,KC -19,KC -15.5,KC +18.9% Quarterback,KC +8.6% Scoring & record,KC +5.3% Defense
-2026_11_BAL_CAR,BAL,CAR,0.6294,0.5545,CAR -3,CAR -2.5,CAR +7.0% Home field,CAR +2.3% Quarterback,BAL +1.7% Offense
+2026_11_IND_HOU,IND,HOU,0.6827,0.8481,HOU -5,HOU -12.5,HOU +7.0% Home field,IND +5.5% Missing skill players,HOU +5.2% Defense
+2026_11_ARI_KC,ARI,KC,0.8937,0.8988,KC -16,KC -15.5,KC +13.6% Quarterback,KC +9.5% Scoring & record,KC +6.1% Defense
+2026_11_BAL_CAR,BAL,CAR,0.6559,0.5689,CAR -4,CAR -3,CAR +7.0% Home field,CAR +3.1% Missing defenders,CAR +2.2% Quarterback
 2026_11_JAX_NYG,JAX,NYG,0.2327,0.3013,JAX -9,JAX -6,JAX +7.8% Scoring & record,NYG +7.0% Home field,JAX +6.5% Quarterback
-2026_11_LV_DEN,LV,DEN,0.8253,0.8179,DEN -11,DEN -10,DEN +9.2% Defense,DEN +7.4% Scoring & record,DEN +6.2% Quarterback
-2026_11_MIA_BUF,MIA,BUF,0.9309,0.8989,BUF -20,BUF -16.5,BUF +14.3% Quarterback,BUF +9.9% Scoring & record,BUF +6.5% Offense
-2026_11_MIN_SF,MIN,SF,0.6483,0.596,SF -3.5,SF -3,SF +12.3% Offense,SF +4.3% Recent form,MIN +4.0% Defense
-2026_11_NO_CHI,NO,CHI,0.8056,0.8223,CHI -11,CHI -11.5,CHI +7.0% Home field,CHI +6.6% Offense,CHI +5.7% Scoring & record
-2026_11_NYJ_LAC,NYJ,LAC,0.5789,0.5918,LAC -3,LAC -3,LAC +7.0% Home field,NYJ +5.6% Offense,LAC +4.7% Defense
-2026_11_PIT_PHI,PIT,PHI,0.3113,0.3432,PIT -6,PIT -4.5,PIT +8.1% Quarterback,PHI +7.0% Home field,PIT +5.3% Offense
-2026_11_TB_DET,TB,DET,0.6429,0.7423,DET -4.5,DET -7,DET +7.0% Home field,DET +5.4% Offense,TB +5.3% Missing defenders
-2026_11_TEN_DAL,TEN,DAL,0.7856,0.7633,DAL -10,DAL -8.5,DAL +9.2% Quarterback,DAL +7.1% Offense,DAL +6.0% Home field
-2026_11_CIN_WAS,CIN,WAS,0.3404,0.2738,CIN -5,CIN -6.5,WAS +7.0% Home field,CIN +6.5% Scoring & record,CIN +5.4% Offense
+2026_11_LV_DEN,LV,DEN,0.8337,0.8316,DEN -11.5,DEN -10.5,DEN +9.2% Defense,DEN +7.4% Scoring & record,DEN +6.2% Quarterback
+2026_11_MIA_BUF,MIA,BUF,0.9229,0.9029,BUF -19,BUF -16.5,BUF +14.3% Quarterback,BUF +9.9% Scoring & record,BUF +6.5% Offense
+2026_11_MIN_SF,MIN,SF,0.6612,0.6112,SF -4,SF -3.5,SF +12.3% Offense,SF +4.3% Recent form,MIN +4.0% Defense
+2026_11_NO_CHI,NO,CHI,0.7961,0.8291,CHI -11,CHI -11.5,CHI +7.0% Home field,CHI +6.6% Offense,CHI +5.7% Scoring & record
+2026_11_NYJ_LAC,NYJ,LAC,0.575,0.6082,LAC -2.5,LAC -3,LAC +7.0% Home field,NYJ +5.6% Offense,LAC +4.7% Defense
+2026_11_PIT_PHI,PIT,PHI,0.3111,0.3589,PIT -6.5,PIT -3.5,PIT +8.1% Quarterback,PHI +7.0% Home field,PIT +5.3% Offense
+2026_11_TB_DET,TB,DET,0.6497,0.6602,DET -5,DET -3.5,DET +7.0% Home field,DET +5.4% Offense,TB +4.6% Missing defenders
+2026_11_TEN_DAL,TEN,DAL,0.7749,0.765,DAL -9.5,DAL -7.5,DAL +9.2% Quarterback,DAL +7.1% Offense,DAL +6.0% Home field
+2026_11_CIN_WAS,CIN,WAS,0.3421,0.2818,CIN -5,CIN -6,WAS +7.0% Home field,CIN +6.5% Scoring & record,CIN +5.4% Offense
