@@ -1053,3 +1053,9 @@ captured_at,game_id,market,side,line,odds,handle_pct,bets_pct,source
 2026-11-20T14:02:55Z,2026_11_IND_HOU,spread,HOU,-12.5,-109,60,54,action_network
 2026-11-20T14:02:55Z,2026_11_IND_HOU,total,over,44.5,-107,72,75,action_network
 2026-11-20T14:02:55Z,2026_11_IND_HOU,total,under,44.5,-112,28,25,action_network
+2026-11-23T17:29:48Z,2026_11_MIN_SF,moneyline,MIN,,175,35,20,action_network
+2026-11-23T17:29:48Z,2026_11_MIN_SF,moneyline,SF,,-210,65,80,action_network
+2026-11-23T17:29:48Z,2026_11_MIN_SF,spread,MIN,4.5,-110,74,72,action_network
+2026-11-23T17:29:48Z,2026_11_MIN_SF,spread,SF,-4.5,-108,26,28,action_network
+2026-11-23T17:29:48Z,2026_11_MIN_SF,total,over,45.5,-104,16,11,action_network
+2026-11-23T17:29:48Z,2026_11_MIN_SF,total,under,45.5,-114,84,89,action_network
