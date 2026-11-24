@@ -24,7 +24,7 @@ jobs:
     runs-on: ubuntu-latest
     environment:
       name: github-pages
-      url: ${{ steps.deploy.outputs.page_url }}
+      url: ${{ steps.deploy.outputs.page_url || steps.deploy-retry.outputs.page_url }}
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
@@ -37,7 +37,12 @@ jobs:
       - uses: actions/upload-pages-artifact@v5
         with:
           path: _site
-      # GitHub's artifact listing lags the upload; deploying instantly intermittently sees 0 artifacts.
-      - run: sleep 15
       - id: deploy
+        uses: actions/deploy-pages@v5
+        continue-on-error: true
+      # GitHub's artifact listing can lag the upload, so the first deploy sometimes sees 0 artifacts.
+      - if: steps.deploy.outcome == 'failure'
+        run: sleep 20
+      - id: deploy-retry
+        if: steps.deploy.outcome == 'failure'
         uses: actions/deploy-pages@v5
