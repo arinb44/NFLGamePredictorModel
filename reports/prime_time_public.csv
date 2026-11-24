@@ -1059,3 +1059,9 @@ captured_at,game_id,market,side,line,odds,handle_pct,bets_pct,source
 2026-11-23T17:29:48Z,2026_11_MIN_SF,spread,SF,-4.5,-108,26,28,action_network
 2026-11-23T17:29:48Z,2026_11_MIN_SF,total,over,45.5,-104,16,11,action_network
 2026-11-23T17:29:48Z,2026_11_MIN_SF,total,under,45.5,-114,84,89,action_network
+2026-11-24T14:58:59Z,2026_11_CIN_WAS,moneyline,CIN,,-300,82,91,action_network
+2026-11-24T14:58:59Z,2026_11_CIN_WAS,moneyline,WAS,,240,18,9,action_network
+2026-11-24T14:58:59Z,2026_11_CIN_WAS,spread,WAS,6.5,-110,34,33,action_network
+2026-11-24T14:58:59Z,2026_11_CIN_WAS,spread,CIN,-6.5,-109,66,67,action_network
+2026-11-24T14:58:59Z,2026_11_CIN_WAS,total,under,54.5,-112,40,40,action_network
+2026-11-24T14:58:59Z,2026_11_CIN_WAS,total,over,54.5,-108,60,60,action_network
