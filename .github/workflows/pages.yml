@@ -37,5 +37,7 @@ jobs:
       - uses: actions/upload-pages-artifact@v5
         with:
           path: _site
+      # GitHub's artifact listing lags the upload; deploying instantly intermittently sees 0 artifacts.
+      - run: sleep 15
       - id: deploy
         uses: actions/deploy-pages@v5
