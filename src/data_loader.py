@@ -39,8 +39,15 @@ def _download(url: str, dest: Path, refresh: bool = False) -> Path:
     if dest.exists() and not refresh:
         return dest
     print(f"Downloading {url}")
-    resp = requests.get(url, timeout=120)
-    resp.raise_for_status()
+    try:
+        resp = requests.get(url, timeout=120)
+        resp.raise_for_status()
+    except requests.RequestException as e:
+        if not dest.exists():
+            raise
+        # nflverse swaps release assets in place, so a refresh can briefly 404; keep the cached copy.
+        print(f"Refresh failed ({e}); using cached {dest}", file=sys.stderr)
+        return dest
     tmp = dest.with_suffix(dest.suffix + ".part")
     tmp.write_bytes(resp.content)
     tmp.replace(dest)
